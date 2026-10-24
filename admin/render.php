@@ -49,7 +49,7 @@ function mg_saoluu_render_setup_wizard($message = '', $status = '') {
             <h2>Bảo vệ theo môi trường</h2>
             <form method="post"><?php wp_nonce_field('mg_saoluu_secure', 'mg_nonce'); ?><input type="hidden" name="mg_action" value="setup_security">
                 <div class="mgsl-box"><p><label><input type="checkbox" name="block_emails" value="1" <?php checked(get_option('mg_saoluu_block_emails', '1'), '1'); ?>> Chặn email khi ở Local hoặc web thử nghiệm</label></p><p><label><input type="checkbox" name="force_noindex" value="1" <?php checked(get_option('mg_saoluu_force_noindex', '1'), '1'); ?>> Buộc Local và web thử nghiệm không cho Google lập chỉ mục</label></p></div>
-                <?php if ($env === 'production'): ?><div class="mgsl-note mgsl-danger"><strong>Web thật:</strong> khôi phục luôn khóa mặc định. Muốn mở, web thật phải được một thiết bị Local đã ghép nối ký phê duyệt trong 10 phút.</div><?php else: ?><div class="mgsl-note mgsl-warning"><strong>Lưu ý:</strong> plugin chặn email WordPress, nhưng không đảm bảo chặn mọi dịch vụ gửi trực tiếp. Trên web thử nghiệm vẫn cần tắt SMTP, webhook và thanh toán thật.</div><?php endif; ?>
+                <?php if ($env === 'production'): ?><div class="mgsl-note mgsl-danger"><strong>Web thật:</strong> <?php echo strpos(MG_SAOLUU_VERSION, '-rc') !== false ? 'Bản RC khóa hoàn toàn Restore production; mã phê duyệt Local không mở khóa được.' : 'Khôi phục web thật yêu cầu thiết bị Local đã ghép nối ký phê duyệt trong 10 phút.'; ?></div><?php else: ?><div class="mgsl-note mgsl-warning"><strong>Lưu ý:</strong> plugin chặn email WordPress, nhưng không đảm bảo chặn mọi dịch vụ gửi trực tiếp. Trên web thử nghiệm vẫn cần tắt SMTP, webhook và thanh toán thật.</div><?php endif; ?>
                 <div class="mgsl-actions"><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=mg-saoluu-tools&setup=1&step=2')); ?>">Quay lại</a><button class="button button-primary button-large">Tiếp tục</button></div>
             </form>
         <?php elseif ($step === 4): ?>
@@ -59,7 +59,7 @@ function mg_saoluu_render_setup_wizard($message = '', $status = '') {
         <?php else: ?>
             <h2>Thiết lập đã sẵn sàng</h2>
             <div class="mgsl-setup-grid"><div class="mgsl-box"><h3>Môi trường</h3><p style="color:<?php echo esc_attr($info['color']); ?>;font-weight:800"><?php echo esc_html($info['label']); ?></p><p><?php echo esc_html(home_url('/')); ?></p></div><div class="mgsl-box"><h3>Quy trình an toàn</h3><p>Sao lưu → Xác minh → Lưu ngoài hosting → Thử khôi phục.</p></div></div>
-            <?php if (!mg_saoluu_signing_key_is_custom()): ?><div class="mgsl-note mgsl-warning">Bản sao đang được ký bằng khóa bảo mật của WordPress. Restore web thật sử dụng phê duyệt Ed25519 từ thiết bị Local và không cần sửa wp-config.php.</div><?php endif; ?>
+            <?php if (!mg_saoluu_signing_key_is_custom()): ?><div class="mgsl-note mgsl-warning">Bản sao đang được ký bằng khóa bảo mật của WordPress. <?php echo strpos(MG_SAOLUU_VERSION, '-rc') !== false ? 'Bản RC không hỗ trợ mở khóa Restore production.' : 'Khôi phục web thật yêu cầu phê duyệt Ed25519 từ Local.'; ?></div><?php endif; ?>
             <div class="mgsl-note"><strong>Google Drive là bước tùy chọn.</strong> Có thể cấu hình ngay sau khi hoàn tất tại <strong>Cài đặt → Lịch &amp; lưu trữ → Google Drive</strong>.</div>
             <?php if (mg_saoluu_environment() === 'local'): ?><div class="mgsl-note mgsl-success"><strong>Bước bảo mật tiếp theo:</strong> vào tab <strong>Bảo mật</strong> để tạo private key Local và mã ghép nối cho Staging/web thật.</div><?php else: ?><div class="mgsl-note mgsl-success"><strong>Bước bảo mật tiếp theo:</strong> vào tab <strong>Bảo mật</strong> và nhập mã ghép nối được tạo trên Local. Môi trường này chỉ lưu public key.</div><?php endif; ?>
             <form method="post"><?php wp_nonce_field('mg_saoluu_secure', 'mg_nonce'); ?><input type="hidden" name="mg_action" value="setup_finish"><div class="mgsl-actions"><a class="button" href="<?php echo esc_url(admin_url('admin.php?page=mg-saoluu-tools&setup=1&step=4')); ?>">Quay lại</a><div><button type="submit" name="after_setup" value="overview" class="button button-large">Hoàn tất và mở tổng quan</button> <button type="submit" name="after_setup" value="drive" class="button button-primary button-large">Hoàn tất và cấu hình Google Drive</button></div></div></form>
@@ -106,7 +106,7 @@ function mg_saoluu_render_page() {
     $manual_env = get_option('mg_saoluu_environment', 'auto');
     $block_emails = get_option('mg_saoluu_block_emails', '1') === '1';
     $force_noindex = get_option('mg_saoluu_force_noindex', '1') === '1';
-    $production_unlocked = $env === 'production' ? mg_saoluu_production_unlocked() : false;
+    $production_unlocked = $env === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') === false ? mg_saoluu_production_unlocked() : false;
     $phrase = $info['phrase'];
 
     $backup_dir = '';
@@ -233,7 +233,9 @@ function mg_saoluu_render_page() {
         <?php elseif ($active === 'restore'): ?>
             <section class="mgsl-card mgsl-note mgsl-warning"><strong>Restore là thao tác ghi dữ liệu.</strong> Luôn thử trên clone có WordPress và DB riêng trước. Có checksum chưa đồng nghĩa đã phục hồi thành công. Khi website hỏng không vào được WP Admin, làm theo RECOVERY_RUNBOOK.md trong gói plugin.</section>
             <?php if (empty($self_integrity['ok'])): ?><div class="mgsl-card mgsl-note mgsl-danger"><strong>Khôi phục đang bị khóa.</strong> File của MG Sao Lưu đang thiếu hoặc lệch phiên bản. Hãy cài lại đúng ZIP rồi kiểm tra lại.</div><?php endif; ?>
-            <?php if ($env === 'production'): ?>
+            <?php if ($env === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false): ?>
+                <section class="mgsl-card mgsl-note mgsl-danger"><strong>Restore production bị khóa trong bản RC.</strong> Không thể mở bằng mã Local hoặc thao tác quản trị. Chỉ thử khôi phục trên WordPress clone với database riêng; khi cần phục hồi website thật, sử dụng Recovery Runbook được duyệt.</section>
+            <?php elseif ($env === 'production'): ?>
                 <section class="mgsl-card">
                     <div class="mgsl-actions-separated"><div><h2 class="mgsl-title">Phê duyệt khôi phục web thật</h2><p>Không cần sửa <code>wp-config.php</code>. Web thật chỉ mở Restore khi nhận chữ ký từ Local đã ghép nối.</p></div><span class="mgsl-security-pill <?php echo $production_unlocked ? 'is-warn' : 'is-pass'; ?>"><?php echo $production_unlocked ? 'ĐANG MỞ 10 PHÚT' : 'ĐANG KHÓA'; ?></span></div>
                     <?php if (!$trusted_signers): ?>
@@ -303,7 +305,7 @@ function mg_saoluu_render_page() {
                 <section class="mgsl-card mgsl-note mgsl-success"><strong>✓ Không có cảnh báo bảo mật cần xử lý.</strong></section>
             <?php endif; ?>
 
-            <?php if (!empty($security_output)): ?>
+            <?php if (!empty($security_output) && (strpos(MG_SAOLUU_VERSION, '-rc') === false || ($security_output['type'] ?? '') !== 'restore_approval')): ?>
                 <section class="mgsl-card mgsl-code-output">
                     <?php if (($security_output['type'] ?? '') === 'pair_code'): ?>
                         <h2 class="mgsl-title">Mã ghép nối Local</h2><p>Mã hết hạn sau 30 phút. Sao chép sang <strong>web thật → Bảo mật → Ghép nối Local</strong>.</p>
@@ -330,11 +332,13 @@ function mg_saoluu_render_page() {
                             <form method="post"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="security_generate_device"><input type="hidden" name="return_tab" value="security"><div class="mgsl-field"><label>Tên thiết bị</label><input type="text" name="device_name" placeholder="MacBook của Dũng"></div><button class="button button-primary">Tạo khóa thiết bị</button></form>
                         <?php endif; ?>
                     </div>
+                    <?php if (strpos(MG_SAOLUU_VERSION, '-rc') === false): ?>
                     <div class="mgsl-card">
                         <h2 class="mgsl-title">Ký yêu cầu Restore</h2>
                         <p>Khi web thật cần Restore, sao chép mã <code>MGRESTORE1...</code> từ web thật sang đây. Local sẽ ký bằng private key.</p>
                         <form method="post"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="security_sign_restore_challenge"><input type="hidden" name="return_tab" value="security"><div class="mgsl-field"><label>Mã yêu cầu từ web thật</label><textarea name="restore_challenge_code" rows="5" placeholder="MGRESTORE1..." required></textarea></div><button class="button button-primary" <?php disabled(!mg_saoluu_security_device_ready()); ?>>Ký yêu cầu</button></form>
                     </div>
+                    <?php endif; ?>
                 <?php else: ?>
                     <div class="mgsl-card">
                         <div class="mgsl-actions-separated"><div><h2 class="mgsl-title">Ghép nối Local</h2><p>Web thật chỉ lưu public key. Không cần DEPLOY_KEY hoặc chỉnh wp-config.php.</p></div><span class="mgsl-security-pill <?php echo $trusted_signers ? 'is-pass' : 'is-warn'; ?>"><?php echo $trusted_signers ? '✓ ' . count($trusted_signers) . ' thiết bị' : 'Chưa ghép'; ?></span></div>
