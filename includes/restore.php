@@ -117,7 +117,10 @@ function mg_saoluu_read_backup_manifest($path, $password = '') {
  */
 function mg_saoluu_runtime_plugin_relative_prefix($runtime_dir = null) {
     $root = trailingslashit(wp_normalize_path(ABSPATH));
-    $dir = trailingslashit(wp_normalize_path($runtime_dir === null ? MG_SAOLUU_DIR : $runtime_dir));
+    $runtime = $runtime_dir === null
+        ? (defined('MG_SAOLUU_FILE') ? dirname(MG_SAOLUU_FILE) : MG_SAOLUU_DIR)
+        : $runtime_dir;
+    $dir = trailingslashit(wp_normalize_path($runtime));
     if ($dir === $root || strpos($dir, $root) !== 0) return '';
     $relative = trim(substr($dir, strlen($root)), '/');
     if ($relative === '' || !mg_saoluu_is_safe_zip_entry($relative . '/self-check.php')) return '';
