@@ -298,6 +298,9 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     }
 
     if ($action === 'clear_log') {
+        $private_clear = mg_saoluu_private_state_delete('audit-log.json');
+        if (is_wp_error($private_clear)) { $status = 'error'; $message = $private_clear->get_error_message(); return; }
+        // Remove only the legacy DB history when the administrator explicitly asks.
         delete_option('mg_saoluu_audit_log');
         $status = 'success'; $message = 'Đã xóa nhật ký thao tác.'; return;
     }
