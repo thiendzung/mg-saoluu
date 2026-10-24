@@ -39,7 +39,13 @@ function mg_saoluu_auto_environment() {
         }
     }
 
-    if (in_array($declared_env, ['local', 'development'], true)) return 'local';
+    if (in_array($declared_env, ['local', 'development'], true)) {
+        $h = mg_saoluu_host();
+        // A public domain cannot become Local merely through an environment flag.
+        if ($h !== 'localhost' && $h !== '127.0.0.1' && !str_ends_with($h, '.test')
+            && !str_ends_with($h, '.local') && !str_ends_with($h, '.localhost')) return 'production';
+        return 'local';
+    }
     if ($declared_env === 'staging') return 'staging';
     if ($declared_env === 'production') return 'production';
 
@@ -61,8 +67,10 @@ function mg_saoluu_auto_environment() {
     return 'production';
 }
 function mg_saoluu_environment() {
+    if (!mg_saoluu_request_host_is_canonical()) return 'production';
     $manual = get_option('mg_saoluu_environment', 'auto');
     $auto = mg_saoluu_auto_environment();
+    if ($manual === 'local' && $auto === 'production') return 'production';
     if (!in_array($manual, ['local', 'staging', 'production'], true)) return $auto;
     if ($auto === 'production' && in_array($manual, ['local', 'staging'], true)) {
         $verified_host = strtolower((string) get_option('mg_saoluu_environment_verified_host', ''));
