@@ -457,13 +457,15 @@ function mg_saoluu_zip_validate($zip_file) {
     if (!is_readable($zip_file) || filesize($zip_file) < 1) return new WP_Error('zip_empty', 'File ZIP không hợp lệ.');
     $zip = new ZipArchive();
     if ($zip->open($zip_file, ZipArchive::CHECKCONS) !== true) return new WP_Error('zip_open_failed', 'Không thể mở hoặc kiểm tra file ZIP.');
-    $has_sql = false; $has_manifest = false; $total = 0;
+    $has_sql = false; $has_manifest = false; $total = 0; $seen_names = [];
     for ($i = 0; $i < $zip->numFiles; $i++) {
         $stat = $zip->statIndex($i);
         if (!$stat) continue;
         $name = str_replace('\\', '/', $stat['name']);
         if (function_exists('mg_saoluu_zip_entry_is_symlink') && mg_saoluu_zip_entry_is_symlink($zip, $i)) { $zip->close(); return new WP_Error('unsafe_zip_symlink', 'ZIP chứa symbolic link không được phép: ' . $name); }
         if (!mg_saoluu_is_safe_zip_entry($name)) { $zip->close(); return new WP_Error('unsafe_zip', 'ZIP chứa đường dẫn không an toàn: ' . $name); }
+        if (isset($seen_names[$name])) { $zip->close(); return new WP_Error('zip_duplicate', 'ZIP chứa entry trùng tên.'); }
+        $seen_names[$name] = true;
         if ($name === 'database_backup.sql') $has_sql = true;
         if ($name === 'mg-backup-manifest.json') $has_manifest = true;
         $total += isset($stat['size']) ? (int) $stat['size'] : 0;
