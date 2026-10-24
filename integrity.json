@@ -31,6 +31,6 @@
     "tools/recovery-verify.php": "69c3a6340616210aaffdfd5deec941c51d3f649d4f8ec3413f016506d9b934da",
     "uninstall.php": "cef8058aeeb6d808286f5b50cb7a7b887597114e37ddfc64ecf7590082ff2e51",
     "includes/diagnostics.php": "6e3960c4a4eba796df808d4e6653d3dec60c7ecaaf70ee8f21602429d3c17e44",
-    "includes/migration.php": "2ab0d61c5e62ca0622ef9213936020f0c595dd3e04f9aa4cd6d631bafd176f34"
+    "includes/migration.php": "2ba808ba3d38b53f510567b9be8ebc3c8c2875e23a8119aa4c3f7c7c32b667ad"
   }
 }
