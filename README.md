@@ -1,6 +1,6 @@
-# MG Sao Lưu v1.2.1-rc9 (pre-release; backup & restore clone)
+# MG Sao Lưu v1.2.1
 
-WordPress Backup → Verify → Store → Restore. Experimental restore on isolated Local/Staging clones only. Production restore is blocked. No live synchronization.
+WordPress Backup → Verify → Store → Restore. Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 
 ## Host → Local trial
 1. Install on dedicated WordPress clone(s) with separate databases; verify WordPress 7.1+, PHP 8.3+, ZipArchive/OpenSSL, mysql/mysqldump, outside-webroot storage.
@@ -16,15 +16,15 @@ SQL daily and full weekly are event-driven via WP-Cron. The Overview now display
 Plugin debug runs by default on Local/Staging only, OFF on Production, files stored outside webroot, 0600, 2 MB log rotation. An explicit `define('MG_SAOLUU_DEBUG', true);` overrides this for authorized staging/incident checks; disable afterwards. WordPress `WP_DEBUG_LOG` is separate. Do not expose PHP errors to public visitors.
 
 ### Constraints
-- RC *always blocks* production restore. Does not sync Local → live Host.
+- Production restore chỉ nhận backup được tạo từ chính production host, manifest hợp lệ, Local đã ghép nối ký mở khóa 10 phút và quản trị viên xác nhận lại mật khẩu + host + câu xác nhận. Không dùng tính năng này để đồng bộ Local → live Host.
 - Backup excludes wp-config.php, .htaccess, Recovery Key and host secrets. Keep Recovery Kit separately.
 - Google Drive uploads encrypted verified archives, but has no verified automatic download/restore flow.
 - Source/contract tests cannot substitute actual independent WordPress + MariaDB/MySQL restore drill.
 
 See [release QA](docs/RELEASE_QA.md) and [recovery runbook](RECOVERY_RUNBOOK.md).
 
-### v1.2.1-rc6 limitation
-Complex PHP-serialized values containing unavailable plugin objects, enums, cyclic references or excessively deep structures are kept unchanged during URL replacement to prevent corruption. Inspect remaining old URLs on the restored clone; do not treat this pre-release as proof of complete URL migration.
+### Giới hạn đã biết
+Complex PHP-serialized values containing unavailable plugin objects, enums, cyclic references or excessively deep structures are kept unchanged during URL replacement to prevent corruption. Kiểm tra các URL cũ còn lại trên clone sau restore; URL rewrite không phải cơ chế migration tổng quát.
 
 
 ### Restore engine self-protection
