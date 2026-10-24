@@ -64,7 +64,11 @@ function mg_saoluu_binary_candidates($type) {
 function mg_saoluu_clear_runtime_cache() {
     delete_transient('mg_saoluu_binary_mysql');
     delete_transient('mg_saoluu_binary_mysqldump');
+    // Purge the previous unversioned key and the active version's diagnostics.
     delete_transient('mg_saoluu_system_checks');
+    if (function_exists('mg_saoluu_system_checks_cache_key')) {
+        delete_transient(mg_saoluu_system_checks_cache_key());
+    }
     mg_saoluu_invalidate_backup_cache();
 }
 
