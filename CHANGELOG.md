@@ -1,3 +1,11 @@
+## 1.3.0-rc1 — Fresh-site migration architecture, signed and fail-closed (2026-10-24)
+
+- Derive identity from WordPress canonical URL, never blindly from an inbound Host header; mismatched requests cannot impersonate Local.
+- Add a separate encrypted Local → fresh Production package, Ed25519 target/archive-bound single-use grant, expiry and replay protection.
+- Preview archive before DB import, block existing data/users/orders and mismatched table prefixes, preserve target MG Sao Lưu plugin code, and use existing checkpoint + rollback logic.
+- RC production writes remain blocked. Stable builds additionally require explicit hosting opt-in, HTTPS and disabled WP-Cron; staging/network isolation and external-service keys must be verified manually.
+- Add focused migration security tests. No deploy/merge or live production operation performed.
+
 ## 1.2.1-rc6 — Backup/restore UI and failure safety (2026-10-24)
 
 - Prevent duplicate operations and show honest pending feedback; expose PHP upload limits and checkpoint/journal status.
