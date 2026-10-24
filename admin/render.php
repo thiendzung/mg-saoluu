@@ -195,11 +195,7 @@ function mg_saoluu_render_page() {
             $checkpoint_name = $name;
             $checkpoint_sha = $hash;
         }
-        if (!empty($restore_journal['started_at']) && !empty($restore_journal['completed_at'])) {
-            $start = strtotime((string) $restore_journal['started_at']);
-            $end = strtotime((string) $restore_journal['completed_at']);
-            if ($start !== false && $end !== false && $end >= $start) $restore_seconds = $end - $start;
-        }
+        $restore_seconds = mg_saoluu_restore_duration_seconds($restore_journal);
     }
 
     $drive_notice = get_transient('mg_saoluu_drive_notice_' . get_current_user_id());
@@ -284,6 +280,7 @@ function mg_saoluu_render_page() {
             $last_label = $labels[$last_status] ?? ($last_status === '' ? 'Chưa có lượt khôi phục' : 'Trạng thái chưa rõ, cần kiểm tra');
             $unfinished = $last_status !== '' && !in_array($last_status, ['completed', 'rolled_back'], true);
             $cleanup = $restore_journal['rollback_file_cleanup'] ?? [];
+            $rollback_attempt_failed_reverted = ($restore_journal['rollback_attempt_status'] ?? '') === 'failed_reverted';
             ?>
             <section class="mgsl-card" aria-label="Trạng thái khôi phục gần nhất">
                 <h2 class="mgsl-title">Lần khôi phục gần nhất</h2>
@@ -296,9 +293,12 @@ function mg_saoluu_render_page() {
                     (plugin kiểm tra đầy đủ SHA trước khi sử dụng).</p>
                 <?php endif; ?>
                 <?php if (is_array($cleanup) && $cleanup): ?>
-                    <p class="mgsl-small">Dọn file khi rollback: <?php echo (int) ($cleanup['requested'] ?? 0); ?> yêu cầu,
+                    <p class="mgsl-small">Dọn file do lần restore trước tạo ra: <?php echo (int) ($cleanup['requested'] ?? 0); ?> yêu cầu,
                     <?php echo (int) ($cleanup['removed'] ?? 0); ?> đã xóa,
                     <?php echo (int) ($cleanup['failed'] ?? 0); ?> lỗi.</p>
+                <?php endif; ?>
+                <?php if ($rollback_attempt_failed_reverted): ?>
+                    <div class="mgsl-note mgsl-danger"><strong>Rollback gần nhất chưa thành công.</strong> Plugin đã phục hồi lại trạng thái trước lần thử rollback; checkpoint gốc vẫn được giữ. Không coi đây là “đã quay lại”. Hãy kiểm tra lỗi và thử lại trên clone.</div>
                 <?php endif; ?>
                 <?php if ($unfinished): ?><div class="mgsl-note mgsl-danger"><strong>Khôi phục chưa kết thúc an toàn.</strong> Không chạy thêm restore cho đến khi kiểm tra Recovery Runbook và checkpoint.</div><?php endif; ?>
             </section>
