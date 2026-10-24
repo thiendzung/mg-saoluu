@@ -302,7 +302,7 @@ function mg_saoluu_render_page() {
                 <?php endif; ?>
                 <?php if ($unfinished): ?><div class="mgsl-note mgsl-danger"><strong>Khôi phục chưa kết thúc an toàn.</strong> Không chạy thêm restore cho đến khi kiểm tra Recovery Runbook và checkpoint.</div><?php endif; ?>
             </section>
-            <section class="mgsl-card mgsl-note mgsl-warning"><strong>Restore là thao tác ghi dữ liệu.</strong> Luôn thử trên clone có WordPress và DB riêng trước. Có checksum chưa đồng nghĩa đã phục hồi thành công. Khi website hỏng không vào được WP Admin, làm theo RECOVERY_RUNBOOK.md trong gói plugin.</section>
+            <section class="mgsl-card mgsl-note mgsl-warning"><strong>Restore là thao tác ghi dữ liệu.</strong> Luôn thử trên clone có WordPress và DB riêng trước. Có checksum chưa đồng nghĩa đã phục hồi thành công. <strong>MG Sao Lưu đang chạy sẽ không bị ghi đè bởi bản plugin nằm trong backup</strong>; dùng Recovery Runbook/ZIP cài đặt riêng nếu cần phục hồi chính plugin. Khi website hỏng không vào được WP Admin, làm theo RECOVERY_RUNBOOK.md trong gói plugin.</section>
             <?php if (empty($self_integrity['ok'])): ?><div class="mgsl-card mgsl-note mgsl-danger"><strong>Khôi phục đang bị khóa.</strong> File của MG Sao Lưu đang thiếu hoặc lệch phiên bản. Hãy cài lại đúng ZIP rồi kiểm tra lại.</div><?php endif; ?>
             <?php if ($env === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false): ?>
                 <section class="mgsl-card mgsl-note mgsl-danger"><strong>Restore production bị khóa trong bản RC.</strong> Không thể mở bằng mã Local hoặc thao tác quản trị. Chỉ thử khôi phục trên WordPress clone với database riêng; khi cần phục hồi website thật, sử dụng Recovery Runbook được duyệt.</section>
