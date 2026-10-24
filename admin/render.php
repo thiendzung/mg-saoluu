@@ -260,11 +260,12 @@ function mg_saoluu_render_page() {
                 'completed' => 'Đã hoàn tất', 'rolled_back' => 'Đã quay lại',
                 'rollback_failed' => 'Cần xử lý lỗi',
                 'maintenance_cleanup_failed' => 'Cần kiểm tra bảo trì',
+                'journal_invalid' => 'Nhật ký hỏng hoặc không đọc được',
                 'running' => 'Chưa hoàn tất', 'database_imported' => 'Chưa hoàn tất',
                 'files_copied' => 'Chưa hoàn tất', 'rolling_back' => 'Chưa hoàn tất',
             ];
             $last_label = $labels[$last_status] ?? 'Chưa có lượt khôi phục';
-            $unfinished = in_array($last_status, ['running','database_imported','files_copied','rolling_back','rollback_failed','maintenance_cleanup_failed'], true);
+            $unfinished = in_array($last_status, ['journal_invalid','running','database_imported','files_copied','rolling_back','rollback_failed','maintenance_cleanup_failed'], true);
             $cleanup = $restore_journal['rollback_file_cleanup'] ?? [];
             ?>
             <section class="mgsl-card" aria-label="Trạng thái khôi phục gần nhất">
