@@ -27,6 +27,7 @@ php tests/integrity_manifest.php
 php tests/contract.php
 php tests/contract.php --unsafe-config
 php tests/migration_contract.php
+php tests/migration_qa_gate.php
 
 ZIP="$TMP/mg-saoluu-v1.3.0-rc1.zip"
 echo "=== PACKAGE: deterministic ZIP + CRC/payload ==="
@@ -41,6 +42,7 @@ php tests/integrity_manifest.php
 php tests/contract.php
 php tests/contract.php --unsafe-config
 php tests/migration_contract.php
+php tests/migration_qa_gate.php
 
 echo "=== FINAL ZIP SHA-256 ==="
 python3 - "$ZIP" <<'PY'
