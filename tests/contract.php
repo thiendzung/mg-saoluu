@@ -1,5 +1,5 @@
 <?php
-/** Standalone narrow regression harness for MG Sao Luu 1.3.0-rc3, no WordPress or live database. */
+/** Standalone narrow regression harness for MG Sao Luu 1.3.0-rc4, no WordPress or live database. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 $root = sys_get_temp_dir() . '/mgsl-v12-' . bin2hex(random_bytes(4));
 mkdir($root . '/public_html/wp-content', 0700, true);
@@ -12,6 +12,7 @@ define('DB_PASSWORD', 'fixture_secret_only');
 define('MINUTE_IN_SECONDS', 60);
 define('HOUR_IN_SECONDS', 3600);
 define('ARRAY_A', 'ARRAY_A');
+define('ARRAY_N', 'ARRAY_N');
 if (in_array('--unsafe-config', $argv ?? [], true)) define('MG_SAOLUU_BACKUP_DIR', ABSPATH . 'wp-content/private-backups');
 $_SERVER['DOCUMENT_ROOT'] = ABSPATH;
 $GLOBALS['test_options'] = [];
@@ -61,7 +62,7 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.3.0-rc3');
+define('MG_SAOLUU_VERSION', '1.3.0-rc4');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
@@ -92,7 +93,7 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('RC3 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc3');
+test('RC4 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc4');
 
 // Stable production restore still requires the signed temporary unlock plus the
 // explicit confirmation phrase. Version promotion must not bypass this gate.
@@ -275,6 +276,49 @@ test('maintenance symlink cannot overwrite outside sentinel',
     is_wp_error($maintenance_link_error) && $maintenance_link_error->get_error_code() === 'restore_destination_symlink'
     && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
 @unlink(ABSPATH . '.maintenance');
+
+// Regression from RC3 runtime: baseline had 12 DB objects, migration produced 83,
+// and checkpoint import alone left all 83. RC4 must reconcile exactly to 12.
+class FixtureSchemaDB {
+ public array $objects;
+ public array $queries=[];
+ public function __construct($objects){$this->objects=$objects;}
+ public function get_results($sql,$mode=null){
+   if ($sql==='SHOW FULL TABLES') {
+     $rows=[]; foreach($this->objects as $name=>$kind) $rows[] = [$name, $kind==='view'?'VIEW':'BASE TABLE']; return $rows;
+   }
+   return [];
+ }
+ public function query($sql){
+   $this->queries[]=$sql;
+   if (preg_match('/^DROP (?:TABLE|VIEW) IF EXISTS `((?:``|[^`])+)`$/', $sql, $m)) {
+     $name=str_replace('``','`',$m[1]); unset($this->objects[$name]); return 1;
+   }
+   return false;
+ }
+}
+$baseline_schema=[];
+for($i=1;$i<=12;$i++) $baseline_schema[sprintf('wp_baseline_%02d',$i)]='table';
+$after_migration=$baseline_schema;
+for($i=1;$i<=70;$i++) $after_migration[sprintf('wp_migrated_%03d',$i)]='table';
+$after_migration['wp_migrated_view']='view';
+$wpdb = new FixtureSchemaDB($after_migration);
+$schema_result = mg_saoluu_reconcile_database_schema($baseline_schema);
+test('rollback schema reconcile reproduces 12 to 83 to exact 12',
+    !is_wp_error($schema_result)
+    && $schema_result['expected']===12
+    && $schema_result['before']===83
+    && $schema_result['extra']===71
+    && $schema_result['removed']===71
+    && $schema_result['after']===12
+    && count($wpdb->objects)===12
+    && $wpdb->objects===$baseline_schema);
+$wpdb = new FixtureSchemaDB($after_migration);
+$missing_inventory = mg_saoluu_reconcile_database_schema([]);
+test('rollback schema reconcile fails closed when baseline inventory is missing',
+    is_wp_error($missing_inventory)
+    && $missing_inventory->get_error_code()==='rollback_schema_inventory_missing'
+    && count($wpdb->objects)===83);
 
 // Restore baseline must be internally healthy BEFORE a rollback checkpoint can
 // be trusted. A DB pointing to a missing active theme is not a safe baseline.
