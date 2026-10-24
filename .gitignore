@@ -1,0 +1,11 @@
+# Do not commit site backup archives, keys or runtime state.
+*.mgbackup
+*.sql
+*.cnf
+*.pem
+*.key
+metadata.json
+.working/
+.DS_Store
+/vendor/
+/node_modules/
