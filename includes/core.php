@@ -308,6 +308,55 @@ function mg_saoluu_read_metadata($file) {
 }
 
 /**
+ * Small operational state that must survive DB rollback without changing
+ * wp_options. Files live in the same private backup directory, are JSON,
+ * atomically replaced and permissioned 0600.
+ */
+function mg_saoluu_private_state_path($name) {
+    $allowed = ['audit-log.json', 'migration-nonces.json'];
+    if (!in_array((string) $name, $allowed, true)) {
+        return new WP_Error('private_state_name', 'Tên private state không hợp lệ.');
+    }
+    $safe = mg_saoluu_storage_preflight();
+    if (is_wp_error($safe)) return $safe;
+    $dir = trailingslashit(mg_saoluu_get_backup_dir());
+    $path = $dir . $name;
+    if (is_link($path) || (file_exists($path) && !is_file($path))) {
+        return new WP_Error('private_state_unsafe', 'Private state path không phải file an toàn.');
+    }
+    return $path;
+}
+
+function mg_saoluu_private_state_read($name) {
+    $path = mg_saoluu_private_state_path($name);
+    if (is_wp_error($path)) return $path;
+    if (!file_exists($path)) return [];
+    $data = mg_saoluu_read_metadata($path);
+    return is_array($data) ? $data : [];
+}
+
+function mg_saoluu_private_state_write($name, $data) {
+    $path = mg_saoluu_private_state_path($name);
+    if (is_wp_error($path)) return $path;
+    if (!is_array($data)) return new WP_Error('private_state_invalid', 'Private state phải là dữ liệu mảng.');
+    if (!mg_saoluu_save_metadata($path, $data)) {
+        return new WP_Error('private_state_write', 'Không ghi được private state an toàn.');
+    }
+    clearstatcache(true, $path);
+    if (!is_file($path) || is_link($path)) return new WP_Error('private_state_write', 'Private state sau ghi không hợp lệ.');
+    @chmod($path, 0600);
+    return true;
+}
+
+function mg_saoluu_private_state_delete($name) {
+    $path = mg_saoluu_private_state_path($name);
+    if (is_wp_error($path)) return $path;
+    if (!file_exists($path)) return true;
+    if (!is_file($path) || is_link($path)) return new WP_Error('private_state_unsafe', 'Private state không thể xóa an toàn.');
+    return @unlink($path) ? true : new WP_Error('private_state_delete', 'Không xóa được private state.');
+}
+
+/**
  * Atomic, non-blocking operation lock across PHP-FPM/cron workers.
  * Uses a private filesystem lock rather than a transient get/set race.
  * The handle must remain open until release. No polling or sleep.
