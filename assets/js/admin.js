@@ -95,7 +95,10 @@
         verify_backup: 'Đang xác minh…',
         restore_saved: 'Đang khôi phục bản đang lưu…',
         restore_zip_upload: 'Đang tải file lên và khôi phục…',
-        restore_sql_upload: 'Đang nhập SQL…'
+        restore_sql_upload: 'Đang nhập SQL…',
+        migration_sign: 'Đang xác minh backup và ký domain đích…',
+        migration_stage: 'Đang tải gói lên vùng riêng, xác minh checksum…',
+        migration_apply: 'Đang chuyển site, tạo checkpoint và cập nhật domain…'
     };
 
     document.addEventListener('change', function (event) {
