@@ -16,7 +16,7 @@ function mg_saoluu_request_host_is_canonical() {
     if (empty($_SERVER['HTTP_HOST'])) return true;
     $request = strtolower(trim((string) $_SERVER['HTTP_HOST']));
     // A Host header must be one DNS name (optionally with port), no path or credentials.
-    if (strlen($request) > 253 || preg_match('/[\\\\\/\\s@]/', $request)) return false;
+    if (strlen($request) > 253 || preg_match('/[\\\\\/\\s@?#]/', $request)) return false;
     $request_host = wp_parse_url('http://' . $request, PHP_URL_HOST);
     $canonical = mg_saoluu_host();
     return is_string($request_host) && $canonical !== ''
