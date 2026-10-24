@@ -3,10 +3,10 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.3.0-rc4
+Stable tag: 1.3.0-rc5
 License: GPLv2 or later
 
-MG Sao Luu v1.3.0-rc4: pre-release giu nguyen Backup/Restore da nghiem thu va them signed Local -> fresh Production migration QA.n ==
+MG Sao Luu v1.3.0-rc5: pre-release giu nguyen Backup/Restore da nghiem thu va them signed Local -> fresh Production migration QA.n ==
 
 Backup WordPress database + files, private storage, encrypted archive, separate retention,
 SHA-256 verification, Google Drive upload, protected restore and recovery runbook.
@@ -27,11 +27,18 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 
 == Changelog ==
 
-= 1.3.0-rc4 =
+= 1.3.0-rc5 =
+* Move migration replay ledger and new operational audit events out of wp_options into atomic 0600 private JSON state outside webroot.
+* Preserve legacy DB audit/replay data as read-only compatibility state.
+* Prevent successful migration/rollback logging from changing mg_options after the checkpoint database has been restored.
+* Keep RC4 exact table/view schema reconciliation and all RC migration security gates.
+
+
+= 1.3.0-rc5 =
 * Fix rollback schema reconciliation: checkpoint import now removes DB tables/views introduced after the baseline and verifies exact pre-Restore inventory before reporting rolled_back.
 * Missing schema inventory or any drop/mismatch fails closed.
 * Add regression coverage for the observed 12-table baseline -> 83-table migration -> exact 12-table rollback case.
-\n\n= 1.3.0-rc4 =\n* Rebase signed Local -> fresh Production migration on the v1.2.1 Stable Backup/Restore hardening.\n* RC remains hard-blocked on real Production; mutation is available only on explicitly isolated Staging QA.\n* Canonical-host, fresh-target, HPOS/order, DB-prefix, Ed25519 one-time grant and URL/GUID safety gates retained.\n* Backup-tab migration picker uses metadata catalog only instead of scanning all archives.\n
+\n\n= 1.3.0-rc5 =\n* Rebase signed Local -> fresh Production migration on the v1.2.1 Stable Backup/Restore hardening.\n* RC remains hard-blocked on real Production; mutation is available only on explicitly isolated Staging QA.\n* Canonical-host, fresh-target, HPOS/order, DB-prefix, Ed25519 one-time grant and URL/GUID safety gates retained.\n* Backup-tab migration picker uses metadata catalog only instead of scanning all archives.\n
 
 = 1.2.1 =
 * Stable Backup/Restore release after isolated-clone runtime acceptance through RC9.
