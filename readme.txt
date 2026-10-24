@@ -3,10 +3,10 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.2.1-rc6
+Stable tag: 1.2.1-rc7
 License: GPLv2 or later
 
-MG Sao Luu v1.2.1-rc6 la pre-release thu nghiem Backup, Verify, Store, Restore tren clone.
+MG Sao Luu v1.2.1-rc7 la pre-release thu nghiem Backup, Verify, Store, Restore tren clone.
 
 == Description ==
 
@@ -28,6 +28,12 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 5. Keep hosting JetBackup + offsite independently. Production only after separate acceptance.
 
 == Changelog ==
+
+= 1.2.1-rc7 =
+* Show the last real scheduled backup result and missed cron events in Overview.
+* Keep local verification distinct from failed or unverified Google Drive uploads.
+* Add isolated regression tests for schedule health; production restore stays blocked.
+
 
 = 1.2.1-rc6 =
 * Honest in-progress state, PHP upload limit and linked rollback checkpoint in UI.
