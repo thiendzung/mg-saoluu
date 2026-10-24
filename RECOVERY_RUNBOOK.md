@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.2.1-rc3 — Recovery Kit & Disaster Restore
+# MG Sao Lưu v1.2.1 — Recovery Kit & Disaster Restore
 
 ## Bước 0 — Trước khi có sự cố
 
@@ -44,9 +44,9 @@ Công cụ sẽ kiểm tra từng checksum SHA-256 và xác thực AES-GCM khi g
 
 ## Giới hạn hiện tại
 
-v1.2.1-rc1 chưa có wizard restore Google Drive/offline tự động, restore thực tế qua cPanel/AZDIGI chưa nghiệm thu, dữ liệu DB+uploads không có snapshot filesystem nguyên tử, và offsite trên Google Drive chưa có xác minh tải lại/immutable retention. **Production restore: NO-GO cho tới khi có clone drill và Founder phê duyệt.**
+v1.2.1 chưa có wizard tải ngược Google Drive để restore tự động, dữ liệu DB + files không phải snapshot filesystem nguyên tử, và upload Drive chưa mặc định chứng minh được roundtrip tải lại. Restore production chỉ dùng backup được tạo từ chính host production, manifest hợp lệ, Local đã ghép nối ký mở khóa 10 phút và quản trị viên xác nhận lại. Với sự cố thật, vẫn phải xác định phạm vi mất dữ liệu và phê duyệt trước khi ghi đè.
 
-## RC3 — Test Host → Local + debug
+## Test Host → Local + debug
 
 1. Trên site nguồn được phép backup, tạo bản mã hóa `local_copy` tại tab **Sao lưu**. Xác minh và tải gói về Mac; lưu Recovery Key nguồn trong password manager. Không dùng dữ liệu khách thật trong môi trường thử chưa được cô lập.
 2. Chuẩn bị **hai clone độc lập** với database và user khác nhau; không ghi đè `motgu.test` hoặc `motgu.com`. Trên clone đích tắt outbound email, payment, webhook, indexing, cron thật trước khi import.
@@ -64,4 +64,4 @@ define('WP_DEBUG_DISPLAY', false);
 
 7. Không gửi raw PHP log hoặc ZIP backup qua chat vì có thể chứa dữ liệu riêng tư. Sau thử nghiệm, tắt logging PHP và bỏ clone theo runbook.
 
-**RC3 production restore vẫn bị khóa.** Đánh giá static/contract không chứng minh phục hồi website thật.
+**Stable production restore không phải migration.** Chỉ khôi phục backup cùng production host sau các chốt bảo mật; nếu WordPress Admin không truy cập được, dùng Recovery Kit và quy trình độc lập ở trên.
