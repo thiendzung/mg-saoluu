@@ -54,6 +54,12 @@ check('WordPress core subdirectory URL is replaced before shorter home URL',
     && $url_pairs['https://abc.test/wp'] === 'https://new.example.com/core');
 $same_pairs = mg_saoluu_restore_url_pairs('https://a.test/','https://a.test/','https://b.example/','https://b.example/');
 check('duplicate home/site URL becomes one replacement pair', count($same_pairs) === 1);
+$ambiguous_pairs = mg_saoluu_restore_url_pairs(
+    'https://a.test/','https://a.test/',
+    'https://b.example/','https://b.example/core/'
+);
+check('ambiguous source URL topology fails closed',
+    is_wp_error($ambiguous_pairs) && $ambiguous_pairs->get_error_code() === 'url_topology_ambiguous');
 
 $_SERVER['HTTP_HOST'] = 'new.example.com';
 check('canonical host from WordPress settings', mg_saoluu_host() === 'new.example.com');
