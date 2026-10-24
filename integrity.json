@@ -1,12 +1,12 @@
 {
   "format": "mg-saoluu-integrity",
   "version": 1,
-  "plugin_version": "1.2.1-rc3",
+  "plugin_version": "1.2.1-rc4",
   "generated_at": "2026-10-24T00:00:00+00:00",
   "files": {
     ".htaccess": "8a140e242a320239d8217be279f4ee83a7157f45c3b9df5f121e868997af81ef",
-    "CHANGELOG.md": "f9a3c73ccd9de365272487f605ec0b9c3a94727b44968307b2cabed5f8d6bedc",
-    "README.md": "02b07296a898f657f8040b72c25235900401572ab1bc31f58de7716a5ea0ae58",
+    "CHANGELOG.md": "8ca634e836a7d95ff2162202049b3e67e1b1933b225c41ca9e9989e2644f2f2c",
+    "README.md": "dac6e309b6ce60069c0829113fdd2207fdc361b509805d9c124647b34c413683",
     "RECOVERY_RUNBOOK.md": "7207575cad63f1da808d742cfac60b92c82d64ed913d2cdf92ea1fe17f136541",
     "admin/actions.php": "2f153af4e960d1ad31120fd748a746e17c219f9f6e35c68e0faa6f6620cd3bed",
     "admin/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
@@ -26,8 +26,8 @@
     "includes/restore.php": "8e473b40d7405ec86e0c2ddf68c2db13ff457e9fa2917937e3b736558c72474d",
     "includes/security.php": "efc11180240724c17d9068b6c10ee0f2527c2af9c831b7b550fc41abe3566262",
     "index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
-    "mg-saoluu.php": "678b96d70da6674ab12834fd4f472c557173b5485f041d97b7deb47a73f32f60",
-    "readme.txt": "eba3a428df256140980ebd95cb805df0e08084a3f069fcf6e20a9260ff9d072e",
+    "mg-saoluu.php": "e54ccdb4758e2131bbcc926f599b9c191b354ad1a91ab4e55ff50be8e08ee9af",
+    "readme.txt": "0d0897e2663392feba9072a1e449ef87b4d9a83baf1ba8d177d611479c27b0df",
     "tools/recovery-verify.php": "69c3a6340616210aaffdfd5deec941c51d3f649d4f8ec3413f016506d9b934da",
     "uninstall.php": "cef8058aeeb6d808286f5b50cb7a7b887597114e37ddfc64ecf7590082ff2e51",
     "includes/diagnostics.php": "6e3960c4a4eba796df808d4e6653d3dec60c7ecaaf70ee8f21602429d3c17e44"
