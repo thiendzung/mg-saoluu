@@ -1,3 +1,10 @@
+## 1.2.1 — Stable Backup & Restore (2026-10-24)
+
+- Promote the runtime-accepted RC9 Backup/Restore tree to Stable; no Data Transfer/Deploy features are re-enabled.
+- Production restore is same-host only: source environment/host must match, manifest signature must verify, a paired Local device must sign a 10-minute unlock, and the administrator must re-enter password, host and confirmation phrase.
+- Retain transactional rollback, restore-engine self-protection, integrity verification, fail-closed ZIP/prefix/symlink/CLI/disk/operation-lock gates, private redacted diagnostics and honest scheduled/offsite status.
+- Interrupted import remains not runtime-injected because no safe deterministic failure mechanism is available; partial import is mitigated by pre-restore checkpoint + rollback but is not claimed crash-atomic.
+
 ## 1.2.1-rc9 — Restore engine self-protection (2026-10-24)
 
 - Full backup archives continue to include MG Sao Luu for offline recovery completeness.
