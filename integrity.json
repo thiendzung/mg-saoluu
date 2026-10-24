@@ -22,7 +22,7 @@
     "includes/google-drive.php": "4a76d69e15fc70237a8a77a1fd2c11b0b4e2b66a55b341342014d56b125c98a7",
     "includes/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "includes/integrity.php": "7baa4468cf9920055f44b87d1d6d0f4b1875fd45e4dfb55c648a04feac6451d9",
-    "includes/lifecycle.php": "55f39471042e47db25dc60c53df38943703f45e6f9e0ced996c9d05eacbd6d67",
+    "includes/lifecycle.php": "b965926a87ef55d1edd7d1cc3441433e7ed746316b4ca89d361f593844957710",
     "includes/restore.php": "d891c90e80c581a8841a784414ad28fc98bda013bc5340668e1bee7d1b7d4001",
     "includes/security.php": "efc11180240724c17d9068b6c10ee0f2527c2af9c831b7b550fc41abe3566262",
     "index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
