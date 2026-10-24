@@ -127,7 +127,8 @@ function mg_saoluu_extract_to_stage($zip_file, $stage_dir, $include_files) {
         $in = $zip->getStream($stat['name']);
         $out = @fopen($dest, 'wb');
         if (!$in || !$out) { if ($in) fclose($in); if ($out) fclose($out); $zip->close(); return new WP_Error('stage_write_failed', 'Không thể đọc file trong ZIP: ' . $name); }
-        stream_copy_to_stream($in, $out); fclose($in); fclose($out);
+        $copied = stream_copy_to_stream($in, $out); fclose($in); fclose($out);
+        if ($copied === false || $copied !== (int) ($stat['size'] ?? -1)) { $zip->close(); return new WP_Error('stage_incomplete', 'File giải nén bị thiếu dữ liệu: '.$name); }
     }
     $zip->close();
     if (!is_readable($stage_dir . 'database_backup.sql')) return new WP_Error('sql_missing', 'Không tìm thấy database_backup.sql sau khi giải nén.');
@@ -143,12 +144,19 @@ function mg_saoluu_copy_stage_files($stage_dir, $backup_type) {
             $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
             if (mg_saoluu_is_excluded_path($relative, $backup_type === 'local_copy' ? 'local_copy' : 'safe_full')) continue;
-            $target = trailingslashit(wp_normalize_path(ABSPATH)) . $relative;
-            if (!wp_mkdir_p(dirname($target))) return new WP_Error('target_mkdir_failed', 'Không thể tạo thư mục: ' . dirname($relative));
-            if (!@copy($path, $target)) return new WP_Error('copy_failed', 'Không thể thay file: ' . $relative);
+            $guard = mg_saoluu_restore_destination_check($relative);
+            if (is_wp_error($guard)) return $guard;
+            $target = $guard['path'];
+            if (!is_dir(dirname($target)) && !wp_mkdir_p(dirname($target))) return new WP_Error('target_mkdir_failed', 'Không thể tạo thư mục đích an toàn.');
+            // Re-check after mkdir and immediately before copy: a changed ancestor must fail closed.
+            $guard = mg_saoluu_restore_destination_check($relative);
+            if (is_wp_error($guard)) return $guard;
+            if (!@copy($path, $guard['path'])) return new WP_Error('copy_failed', 'Không thể thay file đích.');
+            $after = mg_saoluu_restore_destination_check($relative);
+            if (is_wp_error($after) || empty($after['exists']) || empty($after['regular'])) return new WP_Error('restore_destination_changed', 'Đích file đã thay đổi trong lúc khôi phục; đã dừng để bảo vệ dữ liệu.');
         }
     } catch (Throwable $e) {
-        return new WP_Error('copy_failed', 'Lỗi trong lúc thay file: ' . $e->getMessage());
+        return new WP_Error('copy_failed', 'Lỗi trong lúc thay file.');
     }
     return true;
 }
@@ -256,9 +264,26 @@ function mg_saoluu_search_replace_database($old, $new) {
 }
 
 function mg_saoluu_maintenance($enable) {
-    $file = ABSPATH . '.maintenance';
-    if ($enable) @file_put_contents($file, '<?php $upgrading = ' . time() . '; ?>', LOCK_EX);
-    elseif (file_exists($file)) @unlink($file);
+    $guard = mg_saoluu_restore_destination_check('.maintenance');
+    if (is_wp_error($guard)) return $guard;
+    $file = $guard['path'];
+    if ($enable && $guard['exists']) {
+        return new WP_Error('maintenance_already_active', 'Website đã có chế độ bảo trì; dừng restore để không ghi đè thao tác cập nhật khác.');
+    }
+    if ($enable) {
+        $content = '<?php $upgrading = ' . time() . '; ?>';
+        $written = @file_put_contents($file, $content, LOCK_EX);
+        clearstatcache(true, $file);
+        $check = mg_saoluu_restore_destination_check('.maintenance');
+        if ($written !== strlen($content) || is_wp_error($check) || empty($check['regular'])) {
+            return new WP_Error('maintenance_write_failed', 'Không bật được chế độ bảo trì an toàn; đã dừng trước khi nhập database.');
+        }
+    } elseif ($guard['exists']) {
+        if (!@unlink($file)) return new WP_Error('maintenance_remove_failed', 'Không gỡ được chế độ bảo trì; cần kiểm tra thủ công.');
+        clearstatcache(true, $file);
+        if (file_exists($file) || is_link($file)) return new WP_Error('maintenance_remove_failed', 'Chế độ bảo trì vẫn tồn tại; cần kiểm tra thủ công.');
+    }
+    return true;
 }
 
 function mg_saoluu_capture_target_settings() {
@@ -337,6 +362,62 @@ function mg_saoluu_restore_journal($data = null) {
     return $data;
 }
 
+function mg_saoluu_restore_destination_check($relative) {
+    $relative = ltrim(str_replace('\\', '/', (string) $relative), '/');
+    if (!mg_saoluu_is_safe_zip_entry($relative)) return new WP_Error('restore_destination_unsafe', 'Đích file không an toàn; đã dừng.');
+    $root = rtrim(wp_normalize_path(ABSPATH), '/');
+    $canonical_root = realpath($root);
+    if ($canonical_root === false) return new WP_Error('restore_root_unresolved', 'Không xác định được thư mục WordPress an toàn.');
+    $parts = array_values(array_filter(explode('/', $relative), static function ($part) { return $part !== ''; }));
+    if (!$parts) return new WP_Error('restore_destination_unsafe', 'Đích file không an toàn; đã dừng.');
+    $current = $root;
+    $last = count($parts) - 1;
+    foreach ($parts as $index => $part) {
+        $current .= '/' . $part;
+        $exists = file_exists($current) || is_link($current);
+        if (!$exists) continue;
+        if (is_link($current)) return new WP_Error('restore_destination_symlink', 'Đích hoặc thư mục cha là symbolic link; đã dừng để bảo vệ dữ liệu.');
+        $stat = @lstat($current);
+        if (!$stat) return new WP_Error('restore_destination_unresolved', 'Không kiểm tra được đích file; đã dừng.');
+        $type = $stat['mode'] & 0170000;
+        $leaf = $index === $last;
+        if ($type === 0040000) {
+            if ($leaf) return new WP_Error('restore_destination_directory', 'Đích file là thư mục; đã dừng.');
+        } elseif ($type === 0100000) {
+            if (!$leaf) return new WP_Error('restore_destination_special', 'Thư mục cha không phải thư mục thường; đã dừng.');
+        } else {
+            return new WP_Error('restore_destination_special', 'Đích hoặc thư mục cha là file đặc biệt; đã dừng.');
+        }
+        $real = realpath($current);
+        $canonical_root = rtrim(wp_normalize_path($canonical_root), '/');
+        if ($real === false || (wp_normalize_path($real) !== $canonical_root && strpos(wp_normalize_path($real), trailingslashit($canonical_root)) !== 0)) {
+            return new WP_Error('restore_destination_outside', 'Đích file nằm ngoài thư mục WordPress; đã dừng.');
+        }
+    }
+    $leaf_exists = file_exists($current) || is_link($current);
+    return ['path' => $current, 'exists' => $leaf_exists, 'regular' => $leaf_exists && is_file($current) && !is_link($current)];
+}
+
+function mg_saoluu_validate_restore_destinations($stage_dir, $backup_type) {
+    $maintenance = mg_saoluu_restore_destination_check('.maintenance');
+    if (is_wp_error($maintenance)) return $maintenance;
+    try {
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($stage_dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::LEAVES_ONLY);
+        foreach ($iterator as $file) {
+            if (!$file->isFile() || $file->isLink()) continue;
+            $path = wp_normalize_path($file->getPathname());
+            $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
+            if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+            if (mg_saoluu_is_excluded_path($relative, $backup_type === 'local_copy' ? 'local_copy' : 'safe_full')) continue;
+            $guard = mg_saoluu_restore_destination_check($relative);
+            if (is_wp_error($guard)) return $guard;
+        }
+    } catch (Throwable $e) {
+        return new WP_Error('restore_destination_scan_failed', 'Không kiểm tra được các đích file; đã dừng.');
+    }
+    return true;
+}
+
 function mg_saoluu_stage_new_files($stage_dir) {
     $new = [];
     try {
@@ -346,19 +427,96 @@ function mg_saoluu_stage_new_files($stage_dir) {
             $path = wp_normalize_path($file->getPathname());
             $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
-            if (!file_exists(trailingslashit(wp_normalize_path(ABSPATH)) . $relative)) $new[] = $relative;
+            $guard = mg_saoluu_restore_destination_check($relative);
+            if (is_wp_error($guard)) return $guard;
+            if (!$guard['exists']) $new[] = $relative;
         }
-    } catch (Throwable $e) {}
+    } catch (Throwable $e) { return new WP_Error('restore_destination_scan_failed', 'Không kiểm tra được các đích file; đã dừng.'); }
     return $new;
 }
 
-function mg_saoluu_remove_new_restore_files($relative_files) {
+function mg_saoluu_remove_new_restore_files($relative_files, $unlink = null) {
+    $result = ['requested' => 0, 'removed' => 0, 'already_absent' => 0, 'failed' => 0];
+    $unlink = is_callable($unlink) ? $unlink : static function ($target) { return @unlink($target); };
     foreach ((array) $relative_files as $relative) {
+        $result['requested']++;
         $relative = ltrim(str_replace('\\', '/', (string) $relative), '/');
-        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_excluded_path($relative, 'safe_full')) continue;
-        $target = trailingslashit(wp_normalize_path(ABSPATH)) . $relative;
-        if (is_file($target) || is_link($target)) @unlink($target);
+        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_excluded_path($relative, 'safe_full')) {
+            $result['failed']++;
+            continue;
+        }
+        $guard = mg_saoluu_restore_destination_check($relative);
+        if (is_wp_error($guard)) {
+            $result['failed']++;
+            continue;
+        }
+        if (!$guard['exists']) {
+            $result['already_absent']++;
+            continue;
+        }
+        $target = $guard['path'];
+        // Re-check immediately before unlink so a changed ancestor or leaf fails closed.
+        $guard = mg_saoluu_restore_destination_check($relative);
+        if (is_wp_error($guard) || empty($guard['regular'])) {
+            $result['failed']++;
+            continue;
+        }
+        try {
+            $deleted = (bool) $unlink($target);
+        } catch (Throwable $e) {
+            $deleted = false;
+        }
+        if ($deleted) {
+            $after = mg_saoluu_restore_destination_check($relative);
+            if (is_wp_error($after) || !empty($after['exists'])) $result['failed']++;
+            else $result['removed']++;
+        } elseif (!file_exists($target) && !is_link($target)) {
+            $result['already_absent']++;
+        } else {
+            $result['failed']++;
+        }
     }
+    return $result;
+}
+
+/** Remove files introduced by the completed restore when applying its rollback checkpoint. */
+function mg_saoluu_remove_previous_restore_files($journal) {
+    $empty = ['requested' => 0, 'removed' => 0, 'already_absent' => 0, 'failed' => 0];
+    if (!is_array($journal) || ($journal['status'] ?? '') !== 'completed') return $empty;
+    $files = $journal['new_files'] ?? [];
+    if (!is_array($files) || !$files) return $empty;
+    return mg_saoluu_remove_new_restore_files($files);
+}
+
+/** Resolve only the exact, current full-restore checkpoint; fail closed for stale or uploaded copies. */
+function mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore_files) {
+    if (!$restore_files) return ['rollback' => false, 'journal' => []];
+    $name = basename((string) $backup_file);
+    $purpose = sanitize_key($manifest['purpose'] ?? '');
+    $candidate = $purpose === 'rollback' || strpos($name, 'backup_pre_restore_') === 0;
+    if (!$candidate) return ['rollback' => false, 'journal' => []];
+
+    $journal = mg_saoluu_restore_journal();
+    $expected = basename((string) ($journal['pre_backup'] ?? ''));
+    $expected_hash = strtolower((string) ($journal['pre_backup_sha256'] ?? ''));
+    $actual_path = realpath($backup_file);
+    $trusted_path = $expected !== '' ? realpath(trailingslashit(mg_saoluu_get_backup_dir()) . $expected) : false;
+    $actual_hash = $trusted_path !== false ? @hash_file('sha256', $trusted_path) : false;
+    $matches = ($journal['status'] ?? '') === 'completed'
+        && !empty($journal['restore_files'])
+        && is_array($journal['new_files'] ?? null)
+        && $expected !== ''
+        && preg_match('/^[a-f0-9]{64}$/', $expected_hash) === 1
+        && $name === $expected
+        && $actual_path !== false
+        && $trusted_path !== false
+        && wp_normalize_path($actual_path) === wp_normalize_path($trusted_path)
+        && is_string($actual_hash)
+        && hash_equals($expected_hash, strtolower($actual_hash));
+    if (!$matches) {
+        return new WP_Error('rollback_checkpoint_stale', 'Không thể xác định đúng bản quay lại của lần khôi phục gần nhất. Đã dừng để tránh dọn nhầm file.');
+    }
+    return ['rollback' => true, 'journal' => $journal];
 }
 
 function mg_saoluu_rollback_from_backup($pre_path, $restore_files, $password, $target_settings) {
@@ -370,6 +528,10 @@ function mg_saoluu_rollback_from_backup($pre_path, $restore_files, $password, $t
     if (is_wp_error($manifest)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($prepared['path']); return $manifest; }
     $extract = mg_saoluu_extract_to_stage($prepared['path'], $stage, $restore_files);
     if (is_wp_error($extract)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($prepared['path']); return $extract; }
+    if ($restore_files) {
+        $destinations = mg_saoluu_validate_restore_destinations($stage, sanitize_key($manifest['backup_type'] ?? 'safe_full'));
+        if (is_wp_error($destinations)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($prepared['path']); return $destinations; }
+    }
     $import = mg_saoluu_run_mysql_import($stage . 'database_backup.sql');
     if (!is_wp_error($import) && $restore_files) $import = mg_saoluu_copy_stage_files($stage, sanitize_key($manifest['backup_type'] ?? 'safe_full'));
     mg_saoluu_restore_target_settings($target_settings);
@@ -433,6 +595,13 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         }
     }
     $type = sanitize_key($manifest['backup_type'] ?? 'sql');
+    $checkpoint = mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore_files);
+    if (is_wp_error($checkpoint)) {
+        if ($prepared['temporary']) @unlink($zip_file);
+        return $checkpoint;
+    }
+    $rollback_restore = !empty($checkpoint['rollback']);
+    $previous_journal = $checkpoint['journal'];
     if ($restore_files && $type === 'sql') { if ($prepared['temporary']) @unlink($zip_file); return new WP_Error('files_missing', 'Bản sao này chỉ có database.'); }
     if ($restore_files && $target_env !== 'production' && $type === 'safe_full' && $source_env === 'production') {
         if ($prepared['temporary']) @unlink($zip_file);
@@ -449,24 +618,41 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     );
     if (is_wp_error($pre)) { if ($prepared['temporary']) @unlink($zip_file); return new WP_Error('pre_backup_failed', 'Đã dừng vì không tạo được bản quay lại: ' . $pre->get_error_message()); }
     $pre_path = mg_saoluu_get_backup_dir() . $pre;
+    $pre_hash = @hash_file('sha256', $pre_path);
+    if (!$pre_hash) { if ($prepared['temporary']) @unlink($zip_file); return new WP_Error('pre_backup_hash_failed', 'Đã dừng vì không fingerprint được bản quay lại.'); }
     $stage = mg_saoluu_make_temp_dir();
     if (is_wp_error($stage)) { if ($prepared['temporary']) @unlink($zip_file); return $stage; }
     $extract = mg_saoluu_extract_to_stage($zip_file, $stage, $restore_files);
     if (is_wp_error($extract)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $extract; }
     $new_files = $restore_files ? mg_saoluu_stage_new_files($stage) : [];
+    if (is_wp_error($new_files)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $new_files; }
+    if ($restore_files) {
+        $destinations = mg_saoluu_validate_restore_destinations($stage, $type);
+        if (is_wp_error($destinations)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $destinations; }
+    }
 
     $target_home = home_url('/'); $target_site = site_url('/');
     $target_settings = mg_saoluu_capture_target_settings();
     $source_home = (string) ($manifest['source_url'] ?? '');
     $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
-    $journal = ['status' => 'running', 'source' => basename($backup_file), 'pre_backup' => $pre, 'restore_files' => (bool) $restore_files, 'new_file_count' => count($new_files), 'started_at' => current_time('mysql')];
+    $journal = ['status' => 'running', 'source' => basename($backup_file), 'pre_backup' => $pre, 'pre_backup_sha256' => strtolower($pre_hash), 'restore_files' => (bool) $restore_files, 'new_file_count' => count($new_files), 'new_files' => $new_files, 'started_at' => current_time('mysql')];
     mg_saoluu_restore_journal($journal);
-    mg_saoluu_maintenance(true);
+    mg_saoluu_debug_log('restore_started',['type'=>$type,'source_env'=>$source_env,'target_env'=>$target_env,'restore_files'=>$restore_files]);
+    $maintenance = mg_saoluu_maintenance(true);
+    if (is_wp_error($maintenance)) {
+        $journal['status'] = 'maintenance_failed';
+        $journal['error_code'] = $maintenance->get_error_code();
+        mg_saoluu_restore_journal($journal);
+        mg_saoluu_debug_log('restore_preflight_failed', ['code' => $maintenance->get_error_code()]);
+        mg_saoluu_remove_tree($stage);
+        if ($prepared['temporary']) @unlink($zip_file);
+        return $maintenance;
+    }
     $error = null; $replace_report = ['tables' => 0, 'rows' => 0];
     try {
         $import = mg_saoluu_run_mysql_import($stage . 'database_backup.sql');
         if (is_wp_error($import)) throw new RuntimeException($import->get_error_message());
-        $journal['status'] = 'database_imported'; mg_saoluu_restore_journal($journal);
+        $journal['status'] = 'database_imported'; mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_database_imported',['target_env'=>$target_env]);
         if ($change_url && $target_env !== 'production') {
             if ($source_home && untrailingslashit($source_home) !== untrailingslashit($target_home)) {
                 $replace_report = mg_saoluu_search_replace_database($source_home, $target_home);
@@ -486,23 +672,46 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         wp_cache_flush();
         $health = mg_saoluu_restore_health_check($target_env !== 'production' ? $target_home : '');
         if (is_wp_error($health)) throw new RuntimeException($health->get_error_message());
-        $journal['status'] = 'completed'; $journal['completed_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal);
+        if ($rollback_restore) {
+            $cleanup = mg_saoluu_remove_previous_restore_files($previous_journal);
+            $journal['rollback_file_cleanup'] = $cleanup;
+            $journal['rollback_removed_new_file_count'] = $cleanup['removed'];
+            if ($cleanup['failed'] > 0) throw new RuntimeException('Không thể hoàn tất dọn file của bản quay lại.');
+        }
+        $journal['status'] = 'completed'; $journal['completed_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_complete',['type'=>$type]);
     } catch (Throwable $e) {
         $error = new WP_Error('restore_failed', $e->getMessage());
-        $journal['status'] = 'rolling_back'; $journal['error'] = sanitize_text_field($e->getMessage()); mg_saoluu_restore_journal($journal);
+        $journal['status'] = 'rolling_back'; $journal['error'] = sanitize_text_field($e->getMessage()); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_rollback_started',['type'=>$type]);
         $rollback = mg_saoluu_rollback_from_backup($pre_path, $restore_files, $rollback_password, $target_settings);
         if (is_wp_error($rollback)) {
             $journal['status'] = 'rollback_failed'; $journal['rollback_error'] = $rollback->get_error_message(); mg_saoluu_restore_journal($journal);
             $error = new WP_Error('rollback_failed', 'Khôi phục lỗi và tự quay lại cũng lỗi: ' . $rollback->get_error_message() . '. Bản dự phòng: ' . $pre);
         } else {
-            mg_saoluu_remove_new_restore_files($new_files);
+            $cleanup = mg_saoluu_remove_new_restore_files($new_files);
+            $journal['rollback_file_cleanup'] = $cleanup;
+            if ($cleanup['failed'] > 0) {
+                $journal['status'] = 'rollback_failed';
+                $journal['rollback_error'] = 'Không thể dọn hết file phát sinh sau lần khôi phục lỗi.';
+                mg_saoluu_restore_journal($journal);
+                $error = new WP_Error('rollback_failed', 'Khôi phục lỗi; database đã quay lại nhưng không thể dọn hết file phát sinh. Bản dự phòng: ' . $pre);
+            } else {
             $journal['status'] = 'rolled_back'; $journal['rolled_back_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal);
             $error = new WP_Error('restore_rolled_back', 'Khôi phục không thành công nên plugin đã tự quay lại trạng thái trước đó. Lỗi ban đầu: ' . $e->getMessage());
             mg_saoluu_log_event('restore_rolled_back', $e->getMessage(), ['pre_backup' => $pre]);
+            }
         }
     } finally {
         mg_saoluu_restore_target_settings($target_settings);
-        mg_saoluu_maintenance(false);
+        $maintenance_cleanup = mg_saoluu_maintenance(false);
+        if (is_wp_error($maintenance_cleanup)) {
+            $journal['maintenance_cleanup_error'] = $maintenance_cleanup->get_error_code();
+            if (!$error) {
+                $journal['status'] = 'maintenance_cleanup_failed';
+                $error = $maintenance_cleanup;
+            }
+            mg_saoluu_restore_journal($journal);
+            mg_saoluu_debug_log('restore_maintenance_cleanup_failed', ['code' => $maintenance_cleanup->get_error_code()]);
+        }
         mg_saoluu_remove_tree($stage);
         if ($prepared['temporary']) @unlink($zip_file);
     }
@@ -559,7 +768,8 @@ function mg_saoluu_restore_raw_sql($sql_file, $source_url = '', $change_url = tr
     ]);
     if (is_wp_error($pre)) return new WP_Error('pre_backup_failed', 'Đã dừng vì không tạo được bản quay lại: ' . $pre->get_error_message());
     $target_home = home_url('/'); $target_settings = mg_saoluu_capture_target_settings();
-    mg_saoluu_maintenance(true);
+    $maintenance = mg_saoluu_maintenance(true);
+    if (is_wp_error($maintenance)) { mg_saoluu_restore_target_settings($target_settings); return $maintenance; }
     $error = null; $replace = ['tables' => 0, 'rows' => 0];
     try {
         $result = mg_saoluu_run_mysql_import($sql_file);
@@ -577,7 +787,12 @@ function mg_saoluu_restore_raw_sql($sql_file, $source_url = '', $change_url = tr
             ? new WP_Error('rollback_failed', 'Nhập SQL lỗi và không thể tự quay lại. Bản dự phòng: ' . $pre . '. ' . $rollback->get_error_message())
             : new WP_Error('restore_rolled_back', 'Nhập SQL lỗi nên plugin đã tự quay lại. ' . $e->getMessage());
     } finally {
-        mg_saoluu_restore_target_settings($target_settings); mg_saoluu_maintenance(false);
+        mg_saoluu_restore_target_settings($target_settings);
+        $maintenance_cleanup = mg_saoluu_maintenance(false);
+        if (is_wp_error($maintenance_cleanup)) {
+            mg_saoluu_debug_log('restore_maintenance_cleanup_failed', ['code' => $maintenance_cleanup->get_error_code()]);
+            if (!$error) $error = $maintenance_cleanup;
+        }
     }
     if ($error) return $error;
     return ['pre_backup' => $pre, 'replace' => $replace];

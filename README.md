@@ -1,26 +1,21 @@
-# MG Sao Lưu
+# MG Sao Lưu v1.2.1-rc3 (clone trial candidate)
 
-Plugin WordPress dành riêng cho **Backup → Verify → Store → Restore**. Không deploy theme hoặc đồng bộ nội dung.
+WordPress Backup → Verify → Store → Restore. Not live two-way content sync or theme deployment.
 
-**Trạng thái:** `v1.2.1-rc2` — mã RC có thể tạo backup, nhưng **chặn restore trực tiếp trên production**; bắt buộc thử trên clone trước.
+## Host → Local trial
+1. Install on dedicated WordPress clone(s) with separate databases; verify WordPress 7.1+, PHP 8.3+, ZipArchive/OpenSSL, mysql/mysqldump, outside-webroot storage.
+2. On authorized source Host choose **Backup → Gói Host → Local**, download encrypted `local_copy`, export the source Recovery Key to a password manager.
+3. Create a fresh isolated Local clone with the same DB table prefix, disable email/payment/webhooks/indexing. Use **Restore → Nhập .mgbackup/.zip**, supply the source key, change URL (preserving GUID), restore DB+files.
+4. Under **Cài đặt → Hệ thống → Debug backup/restore**, download `mg-saoluu-debug.jsonl`. Only event states and whitelisted fields; no passwords or customer details.
+5. Inspect Woo HPOS, media, custom tables, theme/plugins, URL/GUID and rollback evidence. Never overwrite canonical `motgu.test` while developing.
 
-## Chức năng
+### Logging
+Plugin debug runs by default on Local/Staging only, OFF on Production, files stored outside webroot, 0600, 2 MB log rotation. An explicit `define('MG_SAOLUU_DEBUG', true);` overrides this for authorized staging/incident checks; disable afterwards. WordPress `WP_DEBUG_LOG` is separate. Do not expose PHP errors to public visitors.
 
-- Sao lưu toàn bộ database (bao gồm WooCommerce HPOS) hoặc tạo bản website gồm DB + files.
-- AES-256-GCM, SHA-256/HMAC, lưu ngoài webroot, retention riêng và Google Drive upload (chưa xác minh download ngược).
-- Xác minh bản sao, restore có checkpoint/rollback cố gắng, kiểm tra offline bằng `tools/recovery-verify.php`.
+### Constraints
+- RC *always blocks* production restore. Does not sync Local → live Host.
+- Backup excludes wp-config.php, .htaccess, Recovery Key and host secrets. Keep Recovery Kit separately.
+- Google Drive uploads encrypted verified archives, but has no verified automatic download/restore flow.
+- Source/contract tests cannot substitute actual independent WordPress + MariaDB/MySQL restore drill.
 
-## Yêu cầu
-
-WordPress **7.1+**, PHP **8.3+** (`ZipArchive`, `OpenSSL`), MySQL/MariaDB tương thích và **`mysql` + `mysqldump` CLI**. Chọn đường dẫn backup **ngoài webroot** và giữ Recovery Key riêng.
-
-## Sử dụng
-
-1. Cài **trên WordPress clone có database riêng**.
-2. Vào **MG Sao Lưu → Cài đặt** kiểm tra PHP/CLI, storage, Recovery Key.
-3. Tạo bản mã hóa → **Xác minh** → lưu offsite.
-4. **Thử restore trên clone khác**; chỉ vận hành production sau khi nghiệm thu.
-
-**Lưu ý:** Bản website *không kèm* `wp-config.php`, `.htaccess`, cấu hình hosting và Recovery Key. Cần Recovery Kit riêng; upload Drive thành công **không đồng nghĩa restore thành công**.
-
-[Hướng dẫn khôi phục](RECOVERY_RUNBOOK.md) · [Thay đổi](CHANGELOG.md) · License: GPL-2.0-or-later.
+See [release QA](docs/RELEASE_QA.md) and [recovery runbook](RECOVERY_RUNBOOK.md).

@@ -47,6 +47,7 @@ function mg_saoluu_backup_preflight($type, $source_size) {
 }
 
 function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_retention = true, $options = []) {
+    mg_saoluu_debug_log('backup_start', ['type'=>$type]);
     $safe = mg_saoluu_storage_preflight();
     if (is_wp_error($safe)) return $safe;
     if (!in_array($type, ['sql', 'safe_full', 'local_copy'], true)) return new WP_Error('type_invalid', 'Kiểu sao lưu không hợp lệ.');
@@ -71,6 +72,7 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
         return new WP_Error('offsite_requires_encryption', 'Chỉ gửi backup đã mã hóa lên Google Drive; hãy bật mã hóa và lưu Recovery Key trước.');
     }
 
+    if ($type === 'local_copy' && !$encrypt) return new WP_Error('local_copy_requires_encryption', 'Gói Host → Local bắt buộc mã hóa.');
     $collection = mg_saoluu_collect_backup_files($type);
     if (is_wp_error($collection)) return $collection;
     $preflight = mg_saoluu_backup_preflight($type, (int) $collection['size']);
@@ -131,6 +133,7 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
     }
     $zip->close();
     @unlink($sql_file);
+    mg_saoluu_debug_log('backup_archive_ready',['type'=>$type,'file_count'=>$added]);
 
     $check = mg_saoluu_read_zip_manifest($zip_file);
     if (is_wp_error($check)) { @unlink($zip_file); return $check; }
@@ -199,6 +202,7 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
         mg_saoluu_save_metadata($metadata_file, $metadata);
     }
 
+    mg_saoluu_debug_log('backup_verified',['type'=>$type,'bytes'=>(int)filesize($final_path)]);
     if ($apply_retention) {
         $retained = mg_saoluu_apply_retention();
         if (is_wp_error($retained)) mg_saoluu_log_event('retention_failed', $retained->get_error_message());

@@ -5,6 +5,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     if (!current_user_can('manage_options')) wp_die('Bạn không có quyền thực hiện.');
     check_admin_referer('mg_saoluu_secure', 'mg_nonce');
     $action = sanitize_key(wp_unslash($_POST['mg_action']));
+    if (in_array($action,['backup','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
 
     // v1.2.1 concentrates on BACKUP/RESTORE. Existing transfer and deploy
     // implementation/options remain on disk for a future migration, but no
@@ -16,6 +17,16 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     ], true)) {
         $status = 'error';
         $message = 'MG Sao Lưu v1.2.1 chỉ hỗ trợ Backup & Restore. Data Transfer/Deploy đã tạm khóa và sẽ thuộc sản phẩm riêng.';
+        return;
+    }
+
+    // RC release cannot authorize production restore, even via a forged/stale admin POST.
+    // Keep security_lock_restore available to revoke any old unlock token.
+    if (strpos(MG_SAOLUU_VERSION, '-rc') !== false && in_array($action, [
+        'security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval',
+    ], true)) {
+        $status = 'error';
+        $message = 'Bản RC không hỗ trợ cấp quyền Restore production. Chỉ kiểm thử trên clone độc lập.';
         return;
     }
 

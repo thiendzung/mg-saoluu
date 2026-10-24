@@ -1,37 +1,38 @@
-# MG Sao Lưu v1.2.1-rc2 — Release QA
+# MG Sao Lưu v1.2.1-rc3 — Clone trial gate
 
-**Status:** Source/contract PASS. **Production restore BLOCKED in RC.** Full Herd/DBngin/cPanel backup-restore drill NOT YET PROVEN.
+**State:** Agent Local reports the clone restore and Issue #8 safety drill PASS at exact HEAD `19035d9af2a81bc97ffb0b7e3c6d892151a8f384`; this evidence does not automatically cover later review fixes. Production RESTORE remains BLOCKED in RC.
 
-## Change set
+## New first-trial functions
+- Encrypted `local_copy` Host-to-Local package from Admin Backup.
+- Nonproduction UI form to import uploaded `.mgbackup` / `.zip` archive on separate clone.
+- Private structured JSONL: default on Local/Staging, off on Production (unless explicit `MG_SAOLUU_DEBUG` true), outside webroot, capped and rolled. Log stores allowlisted stage names and counts, not credentials.
+- Reject duplicate ZIP paths and incomplete extraction streams. Existing safety gates (prefix, prebackup, RC production restore lock) preserved.
 
-- Focus Backup → Verify → Store → Restore; inactive Data Transfer/Deploy PHP files removed, WordPress settings preserved.
-- WordPress 7.1+, PHP 8.3+ requirements; site PHP must provide ZipArchive and OpenSSL; `mysqldump` + `mysql` CLI required.
-- Atomic non-blocking `flock` in private off-webroot storage protects simultaneous manual/scheduled work; no sleep/polling.
-- Core no longer ships dormant PHP SQL importer/exporter fallback.
-- WordPress asset enqueue for admin CSS/JS; README shortened.
-- Restore on production is fail-closed in RC; backup and verification may still be tested separately under authorization.
+## Final review / release acceptance
+- Run `sh scripts/verify_rc3_release.sh` from a clean disposable checkout at the **latest exact HEAD**. It executes PHP lint, integrity and contracts on source and again against the **extracted final ZIP** (including the 4 unsafe-config tests). Store the command exit status, final ZIP SHA256 and sanitized output.
+- The RC user interface must state **production restore locked** without offering a misleading Local-approval workflow. Direct/stale `security_*restore*` POST requests cannot unlock it. The underlying restore hard-block must remain.
+- The maintenance marker `.maintenance` must fail closed on write failure and report cleanup failure instead of falsely confirming restore success. Validate a negative test on a disposable clone.
+- **Network isolation is a separate runtime gate:** do not accept a copied Woo DB until outbound SMTP, payment gateways, webhooks and Action Scheduler/cron have been disabled or blocked externally and verified by a controlled test. `pre_wp_mail` alone does **not** prove isolation.
+- Physical disk exhaustion was not performed; **simulated low-disk preflight is not equivalent**. Keep this limitation in the release decision and avoid claims of crash-atomic rollback.
+- For debugging, use structured plugin JSONL and WordPress PHP logs **outside webroot** on clones; verify redaction. Do not enable production debug/restore.
+- All evidence must cite the exact source SHA and extracted ZIP SHA; previous SHA reports are not transferable.
 
-## Evidence (PHP 8.4 CLI, isolated test harness)
+## Source and packaged checks
+Run on exact branch SHA, and repeat on extracted ZIP:
+```sh
+find . -type f -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+php tests/contract.php
+php tests/contract.php --unsafe-config
+python3 scripts/package_release.py --out ../mg-saoluu-v1.2.1-rc3.zip
+```
+The integrity manifest must be refreshed for reviewed new source before packaging, without introducing unexpected files.
 
-- PHP lint: **19/19 PASS**.
-- `php tests/contract.php`: **53/53 PASS**.
-- `php tests/contract.php --unsafe-config`: **4/4 PASS**.
-- File manifest SHA and final ZIP CRC: **PASS**.
+## Runtime acceptance — Agent Local (required)
+1. Isolated WordPress 7.1+, PHP 8.3+, MariaDB/MySQL, mysql/mysqldump, OpenSSL and ZipArchive. Two separate disposable WP clones and database users.
+2. On source clone, create encrypted local_copy, verify, download; retain Recovery Key.
+3. On second clone, import with source key + URL migration; verify GUID unchanged, Woo HPOS, CPT/metadata, uploads and theme/plugin files.
+4. Failure drills: wrong key, corrupt/duplicate ZIP, wrong prefix, missing binary, disk full, interrupted SQL import/rollback; parallel lock.
+5. Collect sanitized plugin diagnostic log and WP native PHP log only if enabled in private clone config.
+6. Optional Drive manual roundtrip compare SHA256; direct Drive download/restore not built.
 
-## Not proven
-
-- Full WordPress UI runtime, PHP 8.3/8.5 actual compatibility, ZipArchive in PHP CLI used for real ZIP restore, DBngin MariaDB/MySQL dump/import, Google Drive round-trip, cPanel Cron, Woo HPOS restore, remote disaster recovery.
-- Concurrent two PHP-FPM processes on Herd/hosting, production permissions, visual QA and immutable offsite storage.
-
-## Exit criteria for stable
-
-Independent WordPress+DB clone: encrypted DB/full backup → verify → offsite retrieval → restore fresh DB/files/uploads → compare Woo HPOS/content → wrong-key, missing CLI, mismatch, disk-full, rollback negative paths. Do not restore into canonical `motgu.test` or `motgu.com` during RC testing.
-
-Reference: `RECOVERY_RUNBOOK.md`.
-
-## Reproducible source → ZIP boundary
-
-- Build from the reviewed Git branch, not from an old ZIP.
-- `python3 scripts/package_release.py --out ../mg-saoluu-v1.2.1-rc2.zip` validates SHA manifest, fails if any plugin file is unlisted, and checks archive byte identity.
-- After an intentional source edit, re-review it first; then run the same command with `--refresh-manifest`, commit the manifest change and rerun tests **on the extracted ZIP**.
-- Never merge/release when either the source or ZIP manifest differs; GitHub `main` remains docs-only until Founder merge of the RC PR.
+Do not touch canonical motgu.test or motgu.com. No production restore, merge or live cron until reviewed evidence and Founder approval.

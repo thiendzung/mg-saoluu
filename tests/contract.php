@@ -37,6 +37,7 @@ function get_transient($key) {return $GLOBALS['test_transients'][$key]??false;}
 function set_transient($key,$value,$ttl=0) {$GLOBALS['test_transients'][$key]=$value;return true;}
 function delete_transient($key){unset($GLOBALS['test_transients'][$key]);}
 function wp_json_encode($v,$options=0){return json_encode($v,$options);}
+function current_time($type='mysql'){return '2026-10-24 12:00:00';}
 function home_url($p='/'){return 'https://motgu.com'.(str_starts_with($p,'/')?'':'/').$p;}
 function get_post_meta($id,$key,$single=false){return $id === 2?'12345678-1234-4234-a234-123456789abc':'';}
 function get_term_meta($id,$key,$single=false){return '';}
@@ -55,9 +56,12 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.2.1-rc2');
+define('MG_SAOLUU_VERSION', '1.2.1-rc3');
 function add_action(){}
+function mg_saoluu_environment(){return 'local';}
+function mg_saoluu_is_local_environment(){return true;}
 require_once $base.'core.php';
+require_once $base.'diagnostics.php';
 require_once $base.'crypto.php';
 require_once $base.'google-drive.php';
 require_once $base.'catalog.php';
@@ -94,6 +98,92 @@ test('reject symlink pointing into webroot',!mg_saoluu_storage_path_safe($root.'
 test('accept real external directory',mg_saoluu_storage_path_safe($root.'/outside/vault'));
 test('reject relative path',!mg_saoluu_storage_path_safe('wp-content/backups'));
 
+// Restore destination containment: ordinary files pass, symlink leaves/ancestors fail closed.
+$outside_sentinel = $root . '/outside/restore-sentinel.txt';
+file_put_contents($outside_sentinel, 'SENTINEL-ORIGINAL');
+$restore_stage = $root . '/restore-stage';
+$restore_target_dir = ABSPATH . 'wp-content/uploads';
+wp_mkdir_p($restore_stage . '/wp-content/uploads');
+wp_mkdir_p($restore_target_dir);
+file_put_contents($restore_stage . '/wp-content/uploads/ordinary.txt', 'ordinary-content');
+$ordinary_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+test('ordinary restore destination passes', $ordinary_copy === true && file_get_contents($restore_target_dir . '/ordinary.txt') === 'ordinary-content');
+@unlink($restore_target_dir . '/ordinary.txt');
+
+$leaf_link = $restore_target_dir . '/leaf-link.txt';
+file_put_contents($restore_stage . '/wp-content/uploads/leaf-link.txt', 'must-not-follow-leaf-link');
+symlink($outside_sentinel, $leaf_link);
+$leaf_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+$leaf_cleanup = mg_saoluu_remove_new_restore_files(['wp-content/uploads/leaf-link.txt']);
+test('existing file symlink blocks copy and unlink', is_wp_error($leaf_copy) && $leaf_copy->get_error_code() === 'restore_destination_symlink' && $leaf_cleanup['failed'] === 1 && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($leaf_link);
+
+$uploads_real = ABSPATH . 'wp-content/uploads-real';
+rename($restore_target_dir, $uploads_real);
+symlink($root . '/outside', $restore_target_dir);
+file_put_contents($restore_stage . '/wp-content/uploads/ancestor-link.txt', 'must-not-follow-ancestor-link');
+$ancestor_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+$ancestor_cleanup = mg_saoluu_remove_new_restore_files(['wp-content/uploads/ancestor-link.txt']);
+test('symlinked ancestor blocks copy and unlink', is_wp_error($ancestor_copy) && $ancestor_copy->get_error_code() === 'restore_destination_symlink' && $ancestor_cleanup['failed'] === 1 && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($restore_target_dir);
+rename($uploads_real, $restore_target_dir);
+
+$dangling_link = $restore_target_dir . '/dangling-link.txt';
+file_put_contents($restore_stage . '/wp-content/uploads/dangling-link.txt', 'must-not-follow-dangling-link');
+symlink($root . '/outside/missing-sentinel.txt', $dangling_link);
+$dangling_new = mg_saoluu_stage_new_files($restore_stage);
+$dangling_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+test('dangling symlink is not recorded as new', is_wp_error($dangling_new) && $dangling_new->get_error_code() === 'restore_destination_symlink' && is_wp_error($dangling_copy) && $dangling_copy->get_error_code() === 'restore_destination_symlink');
+@unlink($dangling_link);
+
+$race_preflight = mg_saoluu_validate_restore_destinations($restore_stage, 'safe_full');
+rename($restore_target_dir, $uploads_real);
+symlink($root . '/outside', $restore_target_dir);
+$race_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+test('changed ancestor after preflight fails closed', $race_preflight === true && is_wp_error($race_copy) && $race_copy->get_error_code() === 'restore_destination_symlink' && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($restore_target_dir);
+rename($uploads_real, $restore_target_dir);
+
+$race_leaf = $restore_target_dir . '/race-leaf.txt';
+file_put_contents($race_leaf, 'safe-before-race');
+$race_leaf_preflight = mg_saoluu_restore_destination_check('wp-content/uploads/race-leaf.txt');
+@unlink($race_leaf);
+symlink($outside_sentinel, $race_leaf);
+$race_leaf_cleanup = mg_saoluu_remove_new_restore_files(['wp-content/uploads/race-leaf.txt']);
+test('changed leaf before cleanup fails closed', !is_wp_error($race_leaf_preflight) && $race_leaf_preflight['regular'] === true && $race_leaf_cleanup['failed'] === 1 && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($race_leaf);
+
+// The maintenance marker must not silently report success if it cannot be safely managed.
+$maintenance_on = mg_saoluu_maintenance(true);
+test('maintenance marker created before restore DB write',
+    $maintenance_on === true && is_file(ABSPATH . '.maintenance'));
+$maintenance_off = mg_saoluu_maintenance(false);
+test('maintenance marker removed on cleanup',
+    $maintenance_off === true && !file_exists(ABSPATH . '.maintenance'));
+mkdir(ABSPATH . '.maintenance', 0700);
+$maintenance_dir_error = mg_saoluu_maintenance(true);
+test('maintenance path directory fails closed',
+    is_wp_error($maintenance_dir_error) && $maintenance_dir_error->get_error_code() === 'restore_destination_directory');
+rmdir(ABSPATH . '.maintenance');
+file_put_contents(ABSPATH . '.maintenance', 'existing-wordpress-updater-marker');
+$maintenance_existing_error = mg_saoluu_maintenance(true);
+test('existing WordPress maintenance marker is preserved',
+    is_wp_error($maintenance_existing_error)
+    && $maintenance_existing_error->get_error_code() === 'maintenance_already_active'
+    && file_get_contents(ABSPATH . '.maintenance') === 'existing-wordpress-updater-marker');
+@unlink(ABSPATH . '.maintenance');
+symlink($outside_sentinel, ABSPATH . '.maintenance');
+$maintenance_link_error = mg_saoluu_maintenance(true);
+test('maintenance symlink cannot overwrite outside sentinel',
+    is_wp_error($maintenance_link_error) && $maintenance_link_error->get_error_code() === 'restore_destination_symlink'
+    && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink(ABSPATH . '.maintenance');
+
+test('debug enabled on clone',mg_saoluu_debug_enabled()===true);
+test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
+test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
+test('debug file outside webroot',mg_saoluu_storage_path_safe(mg_saoluu_debug_file()));
+test('debug log excludes password',!str_contains(file_get_contents(mg_saoluu_debug_file()),'secret'));
 // Legacy Data Transfer and Deploy code are not shipped; options are preserved.
 test('no dormant data-engine in distribution', !is_file(MG_SAOLUU_DIR.'includes/data-engine.php'));
 test('no dormant deploy engine in distribution', !is_file(MG_SAOLUU_DIR.'includes/deploy.php'));
@@ -130,6 +220,57 @@ foreach($remain as $name){$kind=mg_saoluu_retention_group($name,$meta[$name]??[]
 test('SQL retention 7 independently',$count['sql']===7);
 test('full retention 4 plus separately protected',$count['safe_full']===5&&file_exists($external.$full[0]));
 test('rollback retention 3 independently',$count['rollback']===3);
+$rollback_fixture = ABSPATH . 'wp-content/uploads/rc3-rollback-new.txt';
+wp_mkdir_p(dirname($rollback_fixture));
+file_put_contents($rollback_fixture, 'introduced by restore');
+$removed = mg_saoluu_remove_previous_restore_files([
+ 'status' => 'completed',
+ 'new_files' => ['wp-content/uploads/rc3-rollback-new.txt'],
+]);
+test('explicit rollback removes files introduced by prior restore',$removed['requested']===1&&$removed['removed']===1&&$removed['failed']===0&&!file_exists($rollback_fixture));
+$absent = mg_saoluu_remove_new_restore_files(['wp-content/uploads/rc3-rollback-absent.txt']);
+test('rollback cleanup records already absent files',$absent['requested']===1&&$absent['removed']===0&&$absent['already_absent']===1&&$absent['failed']===0);
+$denied_fixture = ABSPATH . 'wp-content/uploads/rc3-rollback-denied.txt';
+file_put_contents($denied_fixture, 'must remain');
+$delete_failure = mg_saoluu_remove_new_restore_files(['wp-content/uploads/rc3-rollback-denied.txt'], static function ($target) { return false; });
+test('rollback cleanup marks required deletion failure',$delete_failure['requested']===1&&$delete_failure['removed']===0&&$delete_failure['failed']===1&&file_exists($denied_fixture));
+
+// Rollback cleanup must bind to the exact current checkpoint, never a stale or uploaded copy.
+$checkpoint_a = $external . 'backup_pre_restore_safe_full_20261024_120001_000001.mgbackup';
+$checkpoint_b = $external . 'backup_pre_restore_safe_full_20261024_120002_000002.mgbackup';
+$checkpoint_upload_dir = $root . '/uploaded';
+mkdir($checkpoint_upload_dir, 0700, true);
+file_put_contents($checkpoint_a, 'checkpoint-a');
+file_put_contents($checkpoint_b, 'checkpoint-b');
+copy($checkpoint_b, $checkpoint_upload_dir . '/' . basename($checkpoint_b));
+$journal_a = [
+ 'status' => 'completed',
+ 'pre_backup' => basename($checkpoint_a),
+ 'pre_backup_sha256' => hash_file('sha256', $checkpoint_a),
+ 'restore_files' => true,
+ 'new_files' => ['wp-content/uploads/rc3-rollback-a.txt'],
+];
+mg_saoluu_restore_journal($journal_a);
+$context_a = mg_saoluu_rollback_checkpoint_context($checkpoint_a, ['purpose' => 'rollback'], true);
+test('immediate rollback binds exact checkpoint',!is_wp_error($context_a)&&$context_a['rollback']===true);
+$journal_b = [
+ 'status' => 'completed',
+ 'pre_backup' => basename($checkpoint_b),
+ 'pre_backup_sha256' => hash_file('sha256', $checkpoint_b),
+ 'restore_files' => true,
+ 'new_files' => ['wp-content/uploads/rc3-rollback-b.txt'],
+];
+mg_saoluu_restore_journal($journal_b);
+$stale_a = mg_saoluu_rollback_checkpoint_context($checkpoint_a, ['purpose' => 'rollback'], true);
+test('stale checkpoint fails closed',is_wp_error($stale_a)&&$stale_a->get_error_code()==='rollback_checkpoint_stale');
+$uploaded_b = mg_saoluu_rollback_checkpoint_context($checkpoint_upload_dir . '/' . basename($checkpoint_b), ['purpose' => 'rollback'], true);
+test('uploaded checkpoint fails closed',is_wp_error($uploaded_b)&&$uploaded_b->get_error_code()==='rollback_checkpoint_stale');
+$db_only_b = mg_saoluu_rollback_checkpoint_context($checkpoint_b, ['purpose' => 'rollback'], false);
+test('database-only checkpoint never enables file cleanup',!is_wp_error($db_only_b)&&$db_only_b['rollback']===false);
+$orphan = $external . 'backup_rollback_orphan_20261024_120003_000003.mgbackup';
+file_put_contents($orphan, 'orphan');
+$orphan_context = mg_saoluu_rollback_checkpoint_context($orphan, ['purpose' => 'rollback'], true);
+test('unreferenced rollback purpose fails closed',is_wp_error($orphan_context)&&$orphan_context->get_error_code()==='rollback_checkpoint_stale');
 
 // Database URL migration must process a table containing the old URL at most once.
 class FixtureDB {
@@ -215,6 +356,14 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  $_POST=['mg_action'=>$legacy];$message='';$status='';
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
+}
+// RC must reject stale/direct approval POST even with valid admin permissions and nonce.
+foreach (['security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval'] as $blocked_action) {
+    $_POST = ['mg_action' => $blocked_action, 'mg_nonce' => 'fixture'];
+    $rc_message = ''; $rc_status = '';
+    mg_saoluu_handle_actions($rc_message, $rc_status);
+    test('RC prevents approval POST: ' . $blocked_action,
+        $rc_status === 'error' && str_contains($rc_message, 'Bản RC'));
 }
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 

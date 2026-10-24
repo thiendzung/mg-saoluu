@@ -1,3 +1,10 @@
+## 1.2.1-rc3 — Clone trial & private diagnostics (2026-10-24)
+
+- Expose encrypted `local_copy` Host→Local backup and .mgbackup/.zip clone-only import form.
+- Private bounded debug JSONL with allowlist and admin nonce-protected download.
+- Log core backup/restore milestones; reject ZIP duplicate entry and incomplete extraction.
+- Production restore remains blocked in RC; independent WP+DBngin/AZDIGI acceptance pending.
+
 ## 1.2.1-rc2 — Backup & Restore scope/compatibility (2026-10-24)
 
 - Target WordPress 7.1+, PHP 8.3+; confirm CLI/ZipArchive/OpenSSL before install. RC explicitly blocks production restore.
