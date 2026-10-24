@@ -57,7 +57,7 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.3.0-rc2');
+define('MG_SAOLUU_VERSION', '1.3.0-rc3');
 function add_action(){}
 function mg_saoluu_environment(){return 'local';}
 function mg_saoluu_is_local_environment(){return true;}

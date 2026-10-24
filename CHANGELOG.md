@@ -1,3 +1,9 @@
+## 1.3.0-rc3 — Canonical URL migration replacement (2026-10-24)
+
+- Normalize source/target home and site URLs without trailing slash before database search-replace, covering stored absolute URLs with or without slash.
+- Replace longer site_url/core-subdirectory values before home_url to avoid partial rewrite ordering errors.
+- Migration regression suite expands to 34 cases; all RC production write locks remain unchanged.
+
 ## 1.3.0-rc2 — Migration rollback inventory hardening (2026-10-24)
 
 - Keep the currently running MG Sao Luu plugin out of both migration file copy and rollback-new inventory.
