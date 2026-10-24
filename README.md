@@ -1,6 +1,6 @@
-# MG Sao Lưu v1.2.1-rc6 (pre-release; backup & restore clone)
+# MG Sao Lưu v1.3.0-rc1 (pre-release; backup/restore + fresh-site migration candidate)
 
-WordPress Backup → Verify → Store → Restore. Experimental restore on isolated Local/Staging clones only. Production restore is blocked. No live synchronization.
+WordPress Backup → Verify → Store → Restore. This candidate adds an opt-in, signed Local → **fresh** Production migration path. All production restore/migration writes stay hard-locked in RC. It does not sync existing customer/order data.
 
 ## Host → Local trial
 1. Install on dedicated WordPress clone(s) with separate databases; verify WordPress 7.1+, PHP 8.3+, ZipArchive/OpenSSL, mysql/mysqldump, outside-webroot storage.
@@ -20,5 +20,15 @@ Plugin debug runs by default on Local/Staging only, OFF on Production, files sto
 
 See [release QA](docs/RELEASE_QA.md) and [recovery runbook](RECOVERY_RUNBOOK.md).
 
-### v1.2.1-rc6 limitation
+### v1.3.0-rc1 limitations
 Complex PHP-serialized values containing unavailable plugin objects, enums, cyclic references or excessively deep structures are kept unchanged during URL replacement to prevent corruption. Inspect remaining old URLs on the restored clone; do not treat this pre-release as proof of complete URL migration.
+
+
+## Local → fresh Production (design; RC remains locked)
+- New Local Admin action creates an AES-256-GCM `local_copy` archive tagged `purpose=migration`. The original Local site retains the only signing private key.
+- After pairing the Local public key on the destination, sign the exact backup SHA-256 and explicit HTTPS target domain; the Ed25519 grant expires in 10 minutes and is one-time-use.
+- On a **new WordPress installation with matching table prefix**, the destination stages and independently decrypts/verifies the package in private storage before any DB import; a second explicit Admin confirmation + grant is required to apply.
+- Apply uses an independently generated rollback checkpoint, URL replacement with GUID preserved, domain-matching checks, and retains the destination MG Sao Lưu plugin version.
+- **Not supported:** overriding an existing content store, live WooCommerce orders/customers, nonmatching DB prefixes, multisite, or blindly copying wp-config.php, .htaccess, provider secrets and external service configs.
+- Before any future stable deployment: require real isolated staging tests, controlled checkout/mail/webhooks/cron isolation, a verified Recovery Kit, and Founder authorization. RC `-rc` is permanently blocked from production writes.
+- Physical mid-write ENOSPC, power loss, hard-kill and complete replacement of unsupported serialized objects remain unproven. Do not describe this RC as production-ready.
