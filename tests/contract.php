@@ -425,5 +425,11 @@ $setup_actions = file_get_contents(MG_SAOLUU_DIR.'admin/actions.php');
 $setup_ui = file_get_contents(MG_SAOLUU_DIR.'admin/render.php');
 test('Setup trial SQL backup explicitly encrypted', str_contains($setup_actions, "'backup_setup_test', true, ['encrypt' => true, 'upload_drive' => false]"));
 test('Admin never advertises disabled PHP fallback', !str_contains($setup_ui, 'PHP dự phòng'));
+// UI contract: honest operation status and readable restore checkpoint.
+$ux_php = file_get_contents(MG_SAOLUU_DIR . 'admin/render.php');
+$ux_js = file_get_contents(MG_SAOLUU_DIR . 'assets/js/admin.js');
+test('UI prevents duplicate long-running submissions', str_contains($ux_js, 'mgslSubmitting') && str_contains($ux_js, 'mgsl-operation-pending'));
+test('UI warns before exceeding the PHP upload limit', str_contains($ux_php, 'data-mgsl-max-upload') && str_contains($ux_js, 'setCustomValidity'));
+test('UI reports linked checkpoint and cleanup result', str_contains($ux_php, 'checkpoint_sha') && str_contains($ux_php, 'rollback_file_cleanup'));
 // No real WordPress/DBngin/cPanel integration was performed by this mock harness.
 echo "TESTS ".$GLOBALS['test_count']."/".$GLOBALS['test_count']." PASS\n";
