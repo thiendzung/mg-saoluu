@@ -165,6 +165,7 @@ copy($checkpoint_b, $checkpoint_upload_dir . '/' . basename($checkpoint_b));
 $journal_a = [
  'status' => 'completed',
  'pre_backup' => basename($checkpoint_a),
+ 'pre_backup_sha256' => hash_file('sha256', $checkpoint_a),
  'restore_files' => true,
  'new_files' => ['wp-content/uploads/rc3-rollback-a.txt'],
 ];
@@ -174,6 +175,7 @@ test('immediate rollback binds exact checkpoint',!is_wp_error($context_a)&&$cont
 $journal_b = [
  'status' => 'completed',
  'pre_backup' => basename($checkpoint_b),
+ 'pre_backup_sha256' => hash_file('sha256', $checkpoint_b),
  'restore_files' => true,
  'new_files' => ['wp-content/uploads/rc3-rollback-b.txt'],
 ];

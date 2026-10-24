@@ -403,16 +403,21 @@ function mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore
 
     $journal = mg_saoluu_restore_journal();
     $expected = basename((string) ($journal['pre_backup'] ?? ''));
+    $expected_hash = strtolower((string) ($journal['pre_backup_sha256'] ?? ''));
     $actual_path = realpath($backup_file);
     $trusted_path = $expected !== '' ? realpath(trailingslashit(mg_saoluu_get_backup_dir()) . $expected) : false;
+    $actual_hash = $trusted_path !== false ? @hash_file('sha256', $trusted_path) : false;
     $matches = ($journal['status'] ?? '') === 'completed'
         && !empty($journal['restore_files'])
         && is_array($journal['new_files'] ?? null)
         && $expected !== ''
+        && preg_match('/^[a-f0-9]{64}$/', $expected_hash) === 1
         && $name === $expected
         && $actual_path !== false
         && $trusted_path !== false
-        && wp_normalize_path($actual_path) === wp_normalize_path($trusted_path);
+        && wp_normalize_path($actual_path) === wp_normalize_path($trusted_path)
+        && is_string($actual_hash)
+        && hash_equals($expected_hash, strtolower($actual_hash));
     if (!$matches) {
         return new WP_Error('rollback_checkpoint_stale', 'Không thể xác định đúng bản quay lại của lần khôi phục gần nhất. Đã dừng để tránh dọn nhầm file.');
     }
@@ -514,6 +519,8 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     );
     if (is_wp_error($pre)) { if ($prepared['temporary']) @unlink($zip_file); return new WP_Error('pre_backup_failed', 'Đã dừng vì không tạo được bản quay lại: ' . $pre->get_error_message()); }
     $pre_path = mg_saoluu_get_backup_dir() . $pre;
+    $pre_hash = @hash_file('sha256', $pre_path);
+    if (!$pre_hash) { if ($prepared['temporary']) @unlink($zip_file); return new WP_Error('pre_backup_hash_failed', 'Đã dừng vì không fingerprint được bản quay lại.'); }
     $stage = mg_saoluu_make_temp_dir();
     if (is_wp_error($stage)) { if ($prepared['temporary']) @unlink($zip_file); return $stage; }
     $extract = mg_saoluu_extract_to_stage($zip_file, $stage, $restore_files);
@@ -524,7 +531,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     $target_settings = mg_saoluu_capture_target_settings();
     $source_home = (string) ($manifest['source_url'] ?? '');
     $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
-    $journal = ['status' => 'running', 'source' => basename($backup_file), 'pre_backup' => $pre, 'restore_files' => (bool) $restore_files, 'new_file_count' => count($new_files), 'new_files' => $new_files, 'started_at' => current_time('mysql')];
+    $journal = ['status' => 'running', 'source' => basename($backup_file), 'pre_backup' => $pre, 'pre_backup_sha256' => strtolower($pre_hash), 'restore_files' => (bool) $restore_files, 'new_file_count' => count($new_files), 'new_files' => $new_files, 'started_at' => current_time('mysql')];
     mg_saoluu_restore_journal($journal);
     mg_saoluu_debug_log('restore_started',['type'=>$type,'source_env'=>$source_env,'target_env'=>$target_env,'restore_files'=>$restore_files]);
     mg_saoluu_maintenance(true);
