@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MG Sao Lưu & Khôi Phục An Toàn
  * Description: Sao lưu, xác minh, lưu ngoài hosting và khôi phục WordPress có kiểm soát.
- * Version: 1.2.1-rc2
+ * Version: 1.2.1-rc3
  * Requires at least: 7.1
  * Requires PHP: 8.3
  * Update URI: https://github.com/thiendzung/mg-saoluu
@@ -10,7 +10,7 @@
  * License: GPL2
  */
 if (!defined('ABSPATH')) { exit; }
-if (!defined('MG_SAOLUU_VERSION')) define('MG_SAOLUU_VERSION', '1.2.1-rc2');
+if (!defined('MG_SAOLUU_VERSION')) define('MG_SAOLUU_VERSION', '1.2.1-rc3');
 if (!defined('MG_SAOLUU_DATA_VERSION')) define('MG_SAOLUU_DATA_VERSION', '5'); // No destructive migration from RC1.
 if (!defined('MG_SAOLUU_MAX_SQL_UPLOAD')) define('MG_SAOLUU_MAX_SQL_UPLOAD', 300 * 1024 * 1024);
 if (!defined('MG_SAOLUU_MAX_ZIP_UNCOMPRESSED')) define('MG_SAOLUU_MAX_ZIP_UNCOMPRESSED', 8 * 1024 * 1024 * 1024);
@@ -24,6 +24,7 @@ define('MG_SAOLUU_URL', plugin_dir_url(__FILE__));
 require_once MG_SAOLUU_DIR . 'includes/lifecycle.php';
 require_once MG_SAOLUU_DIR . 'includes/environment.php';
 require_once MG_SAOLUU_DIR . 'includes/core.php';
+require_once MG_SAOLUU_DIR . 'includes/diagnostics.php';
 require_once MG_SAOLUU_DIR . 'includes/crypto.php';
 require_once MG_SAOLUU_DIR . 'includes/security.php';
 require_once MG_SAOLUU_DIR . 'includes/google-drive.php';
