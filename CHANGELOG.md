@@ -1,3 +1,9 @@
+## 1.2.1-rc5 — Correct UI rollback checkpoint association (2026-10-24)
+
+- Fix upload-generated filename mismatch on rollback checkpoint restoration, binding to current journal and trusted/uploaded SHA-256 (PR #15).
+- No backup format change. Stale or altered checkpoints remain refused.
+- Source and extracted ZIP gates must pass; UI restore/rollback drill on an isolated clone still required for runtime acceptance.
+
 ## 1.2.1-rc4 — First downloadable restore-fix prerelease (2026-10-24)
 
 - Fix restore failure on nested Astra_Builder_Header serialized values (PR #12).
