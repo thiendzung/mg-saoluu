@@ -60,6 +60,33 @@ check('ordinary backup not a migration', is_wp_error(mg_saoluu_migration_manifes
 check('production source not a Local migration', is_wp_error(mg_saoluu_migration_manifest_preflight(array_replace($manifest, ['source_environment'=>'production']), 'https://new.example.com/', 'wp_')));
 check('migration to same host blocked', is_wp_error(mg_saoluu_migration_manifest_preflight($manifest, 'https://abc.test/', 'wp_')));
 
+class MigrationFixtureDB {
+    public string $prefix = 'wp_';
+    public int $users = 1;
+    public int $comments = 0;
+    public int $content = 2;
+    public int $orders = 0;
+    public int $hpos = 0;
+    public function prepare($query, $param) { return str_replace('%s', "'".addslashes($param)."'", $query); }
+    public function get_var($sql) {
+        if (str_starts_with($sql, 'SHOW TABLES LIKE')) return 'wp_wc_orders';
+        if (str_contains($sql, 'wp_wc_orders')) return $this->hpos;
+        if (str_contains($sql, 'wp_users')) return $this->users;
+        if (str_contains($sql, 'wp_comments')) return $this->comments;
+        if (str_contains($sql, 'shop_order')) return $this->orders;
+        if (str_contains($sql, 'wp_posts')) return $this->content;
+        return null;
+    }
+}
+$GLOBALS['wpdb'] = new MigrationFixtureDB();
+check('fresh target preflight passes', !is_wp_error(mg_saoluu_migration_target_fresh()));
+$GLOBALS['wpdb']->hpos = 1;
+check('HPOS order protects existing store', is_wp_error(mg_saoluu_migration_target_fresh()));
+$GLOBALS['wpdb']->hpos = 0;
+$GLOBALS['wpdb']->users = 2;
+check('existing users protect production target', is_wp_error(mg_saoluu_migration_target_fresh()));
+$GLOBALS['wpdb']->users = 1;
+
 if (!extension_loaded('sodium')) { fwrite(STDERR, "SODIUM REQUIRED\n"); exit(1); }
 $pair = sodium_crypto_sign_keypair();
 $public = sodium_crypto_sign_publickey($pair);
