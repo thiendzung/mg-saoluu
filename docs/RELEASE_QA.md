@@ -6,7 +6,7 @@
 
 - Focus Backup → Verify → Store → Restore; inactive Data Transfer/Deploy PHP files removed, WordPress settings preserved.
 - WordPress 7.1+, PHP 8.3+ requirements; site PHP must provide ZipArchive and OpenSSL; `mysqldump` + `mysql` CLI required.
-- Atomic non-blocking `flock` in private off-webroot storage protects manual/scheduled backup, restore, verification, retention/delete and setup backup; no sleep/polling.
+- Atomic non-blocking `flock` in private off-webroot storage protects simultaneous manual/scheduled work; no sleep/polling.
 - Core no longer ships dormant PHP SQL importer/exporter fallback.
 - WordPress asset enqueue for admin CSS/JS; README shortened.
 - Restore on production is fail-closed in RC; backup and verification may still be tested separately under authorization.
@@ -28,3 +28,10 @@
 Independent WordPress+DB clone: encrypted DB/full backup → verify → offsite retrieval → restore fresh DB/files/uploads → compare Woo HPOS/content → wrong-key, missing CLI, mismatch, disk-full, rollback negative paths. Do not restore into canonical `motgu.test` or `motgu.com` during RC testing.
 
 Reference: `RECOVERY_RUNBOOK.md`.
+
+## Reproducible source → ZIP boundary
+
+- Build from the reviewed Git branch, not from an old ZIP.
+- `python3 scripts/package_release.py --out ../mg-saoluu-v1.2.1-rc2.zip` validates SHA manifest, fails if any plugin file is unlisted, and checks archive byte identity.
+- After an intentional source edit, re-review it first; then run the same command with `--refresh-manifest`, commit the manifest change and rerun tests **on the extracted ZIP**.
+- Never merge/release when either the source or ZIP manifest differs; GitHub `main` remains docs-only until Founder merge of the RC PR.
