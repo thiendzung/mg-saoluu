@@ -384,10 +384,119 @@ function mg_saoluu_handle_actions(&$message, &$status) {
                 'encrypt' => $encrypt,
                 'password' => $password,
                 'upload_drive' => isset($_POST['upload_drive']),
-                'purpose' => $type === 'local_copy' ? 'transfer' : 'normal',
+                'purpose' => $type === 'local_copy' && mg_saoluu_environment() === 'local' && isset($_POST['migration_mode'])
+                    ? 'migration'
+                    : ($type === 'local_copy' ? 'transfer' : 'normal'),
             ]);
             if (is_wp_error($result)) { $status = 'error'; $message = $result->get_error_message(); }
             else { mg_saoluu_log_event('backup', 'Tạo bản sao', ['file' => $result, 'type' => $type]); $status = 'success'; $message = 'Đã tạo bản sao: ' . $result . '. Nên tải một bản về Mac hoặc nơi lưu riêng.'; }
+            return;
+        }
+
+        if ($action === 'migration_sign') {
+            if (mg_saoluu_environment() !== 'local') { $status='error'; $message='Chỉ tạo mã ký trên Local.'; return; }
+            $name = sanitize_file_name(wp_unslash($_POST['file_name'] ?? ''));
+            $target = esc_url_raw(wp_unslash($_POST['target_url'] ?? ''));
+            $key = (string) wp_unslash($_POST['backup_password'] ?? '');
+            $token = mg_saoluu_migration_sign_package($name, $target, $key);
+            if (is_wp_error($token)) { $status='error'; $message=$token->get_error_message(); return; }
+            mg_saoluu_security_output_set('migration_approval', $token, 10 * MINUTE_IN_SECONDS);
+            $status='success'; $message='Đã ký gói chuyển site. Mã chỉ có hiệu lực 10 phút, dùng đúng bản backup và domain đích.';
+            return;
+        }
+
+        if ($action === 'migration_stage') {
+            $gate = mg_saoluu_migration_production_gate();
+            if (is_wp_error($gate)) { $status='error'; $message=$gate->get_error_message(); return; }
+            $self = mg_saoluu_self_integrity();
+            if (empty($self['ok'])) { $status='error'; $message='Đã chặn migration vì file MG Sao Lưu đang thiếu hoặc lệch phiên bản.'; return; }
+            $archive = $_FILES['zip_file'] ?? [];
+            $valid = mg_saoluu_validate_backup_upload($archive, min(2 * 1024 * 1024 * 1024, (int) wp_max_upload_size()));
+            if (is_wp_error($valid)) { $status='error'; $message=$valid->get_error_message(); return; }
+            if (strtolower(pathinfo((string) ($archive['name'] ?? ''), PATHINFO_EXTENSION)) !== 'mgbackup') {
+                $status='error'; $message='Chỉ nhận gói chuyển site đã mã hóa .mgbackup.'; return;
+            }
+            $tmp = mg_saoluu_stage_upload($archive, 'mgbackup');
+            if (is_wp_error($tmp)) { $status='error'; $message=$tmp->get_error_message(); return; }
+            try {
+                $key = (string) wp_unslash($_POST['backup_password'] ?? '');
+                $manifest = mg_saoluu_read_backup_manifest($tmp, $key);
+                if (is_wp_error($manifest)) { $status='error'; $message=$manifest->get_error_message(); return; }
+                global $wpdb;
+                $preview = mg_saoluu_migration_manifest_preflight($manifest, home_url('/'), (string) $wpdb->prefix);
+                if (is_wp_error($preview)) { $status='error'; $message=$preview->get_error_message(); return; }
+                $fresh = mg_saoluu_migration_target_fresh();
+                if (is_wp_error($fresh)) { $status='error'; $message=$fresh->get_error_message(); return; }
+                if (!mg_saoluu_is_encrypted_backup($tmp)) { $status='error'; $message='Chỉ nhận bản mã hóa.'; return; }
+
+                $dir = mg_saoluu_get_backup_dir();
+                $name = 'backup_migration_pending_' . gmdate('Ymd_His') . '_' . strtolower(substr(wp_generate_password(6, false, false), 0, 6)) . '.mgbackup';
+                if (!mg_saoluu_is_backup_filename($name) || !mg_saoluu_storage_path_safe($dir) || is_file($dir . $name) || !@rename($tmp, $dir . $name)) {
+                    $status='error'; $message='Không thể lưu bản chờ trong kho riêng; chưa chạm database.'; return;
+                }
+                @chmod($dir . $name, 0600);
+                $data = mg_saoluu_read_metadata($dir . 'metadata.json');
+                $data[$name] = [
+                    'note' => 'Chờ xác nhận chuyển site từ Local',
+                    'time' => current_time('mysql'),
+                    'type' => 'local_copy',
+                    'source_environment' => 'local',
+                    'source_url' => $preview['source_url'],
+                    'size' => (int) filesize($dir . $name),
+                    'encrypted' => 1,
+                    'purpose' => 'migration_pending',
+                    'integrity_status' => 'content_hash_only',
+                    'integrity_sha256' => hash_file('sha256', $dir . $name),
+                    'drive_status' => 'not_uploaded',
+                    'restore_tested' => false,
+                ];
+                if (!mg_saoluu_save_metadata($dir . 'metadata.json', $data)) {
+                    @unlink($dir . $name);
+                    $status='error'; $message='Không lưu được metadata; file mới đã được dọn.'; return;
+                }
+                mg_saoluu_invalidate_backup_cache();
+                $status='success';
+                $message='Đã kiểm tra và lưu gói mã hóa ngoài webroot. Chưa nhập database; cần mã ký Local để xác nhận.';
+                return;
+            } finally {
+                if (isset($tmp) && is_string($tmp) && is_file($tmp)) @unlink($tmp);
+            }
+        }
+
+        if ($action === 'migration_apply') {
+            $gate = mg_saoluu_migration_production_gate();
+            if (is_wp_error($gate)) { $status='error'; $message=$gate->get_error_message(); return; }
+            $self = mg_saoluu_self_integrity();
+            if (empty($self['ok'])) { $status='error'; $message='Đã chặn migration vì file MG Sao Lưu đang thiếu hoặc lệch phiên bản.'; return; }
+            if (empty($_POST['migration_confirm'])) { $status='error'; $message='Phải xác nhận việc thay thế database của site đích.'; return; }
+
+            $sensitive = mg_saoluu_security_sensitive_confirmation(
+                'migration',
+                (string) wp_unslash($_POST['admin_password'] ?? ''),
+                sanitize_text_field(wp_unslash($_POST['migration_phrase'] ?? '')),
+                'MIGRATE ' . strtoupper(mg_saoluu_host()),
+                sanitize_text_field(wp_unslash($_POST['migration_host'] ?? ''))
+            );
+            if (is_wp_error($sensitive)) { $status='error'; $message=$sensitive->get_error_message(); return; }
+
+            $name = sanitize_file_name(wp_unslash($_POST['file_name'] ?? ''));
+            if (!mg_saoluu_is_backup_filename($name) || strpos($name, 'backup_migration_pending_') !== 0) {
+                $status='error'; $message='Chỉ chọn gói migration đã kiểm tra trong kho riêng.'; return;
+            }
+            $path = mg_saoluu_get_backup_dir() . $name;
+            if (!is_file($path) || is_link($path) || !mg_saoluu_is_encrypted_backup($path)) {
+                $status='error'; $message='Không tìm được bản mã hóa an toàn.'; return;
+            }
+            $approval = (string) wp_unslash($_POST['migration_approval'] ?? '');
+            $key = (string) wp_unslash($_POST['backup_password'] ?? '');
+            $result = mg_saoluu_restore_zip($path, true, true, $key, $approval);
+            if (is_wp_error($result)) {
+                $status='error'; $message='Chuyển site bị dừng: ' . $result->get_error_message();
+            } else {
+                mg_saoluu_log_event('migration_completed', 'Đã chuyển site có ký xác nhận', ['file' => $name]);
+                $status='success';
+                $message='Chuyển site hoàn tất. Bản checkpoint trước nhập: ' . $result['pre_backup'] . '. Kiểm tra URL, đăng nhập, media và external I/O trước khi mở traffic.';
+            }
             return;
         }
 
