@@ -447,10 +447,10 @@ function mg_saoluu_restore_journal($data = null) {
 
 /** Unknown, interrupted and rollback-failed transactions must not be overwritten. */
 function mg_saoluu_restore_journal_unfinished($journal) {
-    return is_array($journal) && in_array((string) ($journal['status'] ?? ''), [
-        'journal_invalid', 'running', 'database_imported', 'files_copied',
-        'rolling_back', 'rollback_failed', 'maintenance_cleanup_failed'
-    ], true);
+    if (!is_array($journal) || !$journal) return false;
+    // Only a recorded completed/rolled-back transaction permits a new write.
+    // Unknown status is not a safe reason to overwrite an existing checkpoint.
+    return !in_array((string) ($journal['status'] ?? ''), ['completed', 'rolled_back'], true);
 }
 
 function mg_saoluu_restore_destination_check($relative) {
