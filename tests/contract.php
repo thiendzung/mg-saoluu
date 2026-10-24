@@ -1,5 +1,5 @@
 <?php
-/** Standalone narrow regression harness for MG Sao Luu 1.3.0-rc4, no WordPress or live database. */
+/** Standalone narrow regression harness for MG Sao Luu 1.3.0-rc5, no WordPress or live database. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 $root = sys_get_temp_dir() . '/mgsl-v12-' . bin2hex(random_bytes(4));
 mkdir($root . '/public_html/wp-content', 0700, true);
@@ -62,7 +62,7 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.3.0-rc4');
+define('MG_SAOLUU_VERSION', '1.3.0-rc5');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
@@ -93,7 +93,7 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('RC4 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc4');
+test('RC5 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc5');
 
 // Stable production restore still requires the signed temporary unlock plus the
 // explicit confirmation phrase. Version promotion must not bypass this gate.
@@ -628,7 +628,7 @@ $unknown=mg_saoluu_backup_prefix_preflight([],'wp_',true);
 test('legacy cross-site unknown prefix blocked',is_wp_error($unknown)&&$unknown->get_error_code()==='backup_prefix_unknown');
 test('legacy same-site prefix still allowed',mg_saoluu_backup_prefix_preflight([],'wp_',false)===true);
 
-// Stable backend safety and honest archive statuses retained in RC4.
+// Stable backend safety and honest archive statuses retained in RC5.
 test('catalog requires actual restore-drill proof', !mg_saoluu_catalog_has_recovery_proof([
  'type'=>'safe_full','integrity_status'=>'verified','restore_tested'=>false
 ]));
@@ -674,7 +674,7 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// RC4 must reject stale/direct approval and migration mutation POSTs even with
+// RC5 must reject stale/direct approval and migration mutation POSTs even with
 // valid admin permissions/nonce. Production writing stays hard-blocked in RC.
 foreach (['security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval'] as $blocked_action) {
     $_POST = ['mg_action' => $blocked_action, 'mg_nonce' => 'fixture'];
