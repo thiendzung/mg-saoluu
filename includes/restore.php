@@ -267,6 +267,9 @@ function mg_saoluu_maintenance($enable) {
     $guard = mg_saoluu_restore_destination_check('.maintenance');
     if (is_wp_error($guard)) return $guard;
     $file = $guard['path'];
+    if ($enable && $guard['exists']) {
+        return new WP_Error('maintenance_already_active', 'Website đã có chế độ bảo trì; dừng restore để không ghi đè thao tác cập nhật khác.');
+    }
     if ($enable) {
         $content = '<?php $upgrading = ' . time() . '; ?>';
         $written = @file_put_contents($file, $content, LOCK_EX);
