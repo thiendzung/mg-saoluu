@@ -1,3 +1,10 @@
+## 1.2.1-rc4 — First downloadable restore-fix prerelease (2026-10-24)
+
+- Fix restore failure on nested Astra_Builder_Header serialized values (PR #12).
+- Guard against cyclic/deep PHP serialized data causing runaway recursion; retain unsafe serialized fields byte-for-byte, continue normal URL conversion (PR #13).
+- Conservative limitation: plugin-specific serialized values left unchanged may retain source URLs. Verify on isolated target before declaring migration complete.
+- Backup and verify on local WordPress are already tested; RC4 exact-SHA clone/runtime acceptance is pending. Production restore remains HARD BLOCKED.
+
 ## 1.2.1-rc3 — Clone trial & private diagnostics (2026-10-24)
 
 - Expose encrypted `local_copy` Host→Local backup and .mgbackup/.zip clone-only import form.
