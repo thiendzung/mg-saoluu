@@ -1,11 +1,31 @@
 <?php
 if (!defined('ABSPATH')) { exit; }
+/**
+ * Canonical WordPress site host, NOT the client-supplied HTTP Host header.
+ * Security approvals, restore package binding and environment gates use this.
+ */
 function mg_saoluu_host() {
-    $host = isset($_SERVER['HTTP_HOST']) ? strtolower((string) $_SERVER['HTTP_HOST']) : '';
-    return preg_replace('/:\d+$/', '', $host);
+    $canonical = function_exists('home_url') ? (string) home_url('/') : '';
+    $host = wp_parse_url($canonical, PHP_URL_HOST);
+    if (!is_string($host) || $host === '') return '';
+    return strtolower(rtrim($host, '.'));
+}
+
+/** A wrong Host header can never make a production website look like Local. */
+function mg_saoluu_request_host_is_canonical() {
+    if (empty($_SERVER['HTTP_HOST'])) return true;
+    $request = strtolower(trim((string) $_SERVER['HTTP_HOST']));
+    // A Host header must be one DNS name (optionally with port), no path or credentials.
+    if (strlen($request) > 253 || preg_match('/[\\\\\/\\s@?#]/', $request)) return false;
+    $request_host = wp_parse_url('http://' . $request, PHP_URL_HOST);
+    $canonical = mg_saoluu_host();
+    return is_string($request_host) && $canonical !== ''
+        && hash_equals($canonical, strtolower(rtrim($request_host, '.')));
 }
 
 function mg_saoluu_auto_environment() {
+    // A missing canonical URL or a mismatched Host is never proof of Local/Staging.
+    if (mg_saoluu_host() === '' || !mg_saoluu_request_host_is_canonical()) return 'production';
     // Chỉ tin WP_ENVIRONMENT_TYPE khi người quản trị đã khai báo rõ.
     // wp_get_environment_type() mặc định trả về "production" ngay cả trên tên miền .test,
     // vì vậy không được dùng giá trị mặc định đó trước khi kiểm tra tên miền local.
@@ -19,8 +39,19 @@ function mg_saoluu_auto_environment() {
         }
     }
 
-    if (in_array($declared_env, ['local', 'development'], true)) return 'local';
-    if ($declared_env === 'staging') return 'staging';
+    if (in_array($declared_env, ['local', 'development'], true)) {
+        $h = mg_saoluu_host();
+        // A public domain cannot become Local merely through an environment flag.
+        if ($h !== 'localhost' && $h !== '127.0.0.1' && !str_ends_with($h, '.test')
+            && !str_ends_with($h, '.local') && !str_ends_with($h, '.localhost')) return 'production';
+        return 'local';
+    }
+    if ($declared_env === 'staging') {
+        // A live public host must never become staging solely from a config flag.
+        $h = mg_saoluu_host();
+        return preg_match('/(^|[.\\-])(staging|stage|dev|demo|sandbox|test)([.\\-]|$)/i', $h)
+            ? 'staging' : 'production';
+    }
     if ($declared_env === 'production') return 'production';
 
     $host = mg_saoluu_host();
@@ -41,8 +72,10 @@ function mg_saoluu_auto_environment() {
     return 'production';
 }
 function mg_saoluu_environment() {
+    if (!mg_saoluu_request_host_is_canonical()) return 'production';
     $manual = get_option('mg_saoluu_environment', 'auto');
     $auto = mg_saoluu_auto_environment();
+    if ($auto === 'production' && in_array($manual, ['local', 'staging'], true)) return 'production';
     if (!in_array($manual, ['local', 'staging', 'production'], true)) return $auto;
     if ($auto === 'production' && in_array($manual, ['local', 'staging'], true)) {
         $verified_host = strtolower((string) get_option('mg_saoluu_environment_verified_host', ''));
