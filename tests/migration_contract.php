@@ -12,6 +12,7 @@ function add_action(...$args) {}
 function add_filter(...$args) {}
 function wp_parse_url($url, $component = -1) { return parse_url((string) $url, $component); }
 function home_url($path = '/') { return rtrim($GLOBALS['mgsl_test_home'], '/') . $path; }
+function untrailingslashit($value) { return rtrim((string) $value, '/'); }
 function get_option($k, $default = null) { return $GLOBALS['mgsl_test_options'][$k] ?? $default; }
 function update_option($k, $value, $autoload = false) { $GLOBALS['mgsl_test_options'][$k] = $value; return true; }
 function sanitize_text_field($value) { return trim((string) $value); }
