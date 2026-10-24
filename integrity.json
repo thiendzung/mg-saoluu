@@ -18,7 +18,7 @@
     "includes/catalog.php": "0e6b7c8b69f7ce809819f250202e352b812d08b150314f501862dfa2bf201d32",
     "includes/core.php": "3c94775ed83f8f999b2801196c639e16e184bb2b3438827c3f8d111018a41675",
     "includes/crypto.php": "13e46de16c686a78094c1286fe3eb324cf8150b354a776e266e95d3421a0862b",
-    "includes/environment.php": "9e03b4b1f514eae5f38a79ab39f8460c190395f79cfc3e6639137c2d94a36153",
+    "includes/environment.php": "ded31f9489a4dae94bfcf6109ef237eb78c51d4493a957bab6ae67e7e72031d8",
     "includes/google-drive.php": "4a76d69e15fc70237a8a77a1fd2c11b0b4e2b66a55b341342014d56b125c98a7",
     "includes/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "includes/integrity.php": "7baa4468cf9920055f44b87d1d6d0f4b1875fd45e4dfb55c648a04feac6451d9",
