@@ -344,7 +344,7 @@ function mg_saoluu_capture_target_settings() {
         'mg_saoluu_drive_client_id','mg_saoluu_drive_client_secret','mg_saoluu_drive_token','mg_saoluu_drive_folder_id',
         'mg_saoluu_managed_encryption_key','mg_saoluu_managed_encryption_key_created_at','mg_saoluu_recovery_key_exported_at',
         'mg_saoluu_device_id','mg_saoluu_device_name','mg_saoluu_device_public_key','mg_saoluu_device_private_key','mg_saoluu_device_created_at',
-        'mg_saoluu_trusted_signers','mg_saoluu_used_deploy_packages',
+        'mg_saoluu_trusted_signers','mg_saoluu_used_deploy_packages','mg_saoluu_used_migration_nonces',
         'mg_saoluu_installed_version','mg_saoluu_data_version'
     ];
     $values = [];
@@ -724,7 +724,12 @@ function mg_saoluu_backup_prefix_preflight($manifest, $target_prefix, $cross_sit
     return true;
 }
 
-function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true, $password = '') {
+/** Permit domain rewrite on production only with a verified signed migration grant. */
+function mg_saoluu_restore_should_change_url($enabled, $target_env, $migration_approval = null) {
+    return (bool) $enabled && ($target_env !== 'production' || $migration_approval !== null);
+}
+
+function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true, $password = '', $migration_grant = '') {
     // RC builds may create backups on production, but must never overwrite a live DB.
     if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
         return new WP_Error('rc_production_restore_disabled', 'Bản RC chỉ được restore trên clone. Dùng Recovery Runbook độc lập khi cần cứu site production.');
@@ -749,6 +754,39 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         return new WP_Error('restore_cli_missing', 'Chưa đủ mysql và mysqldump CLI để khôi phục + tạo checkpoint rollback an toàn.');
     }
     $target_env = mg_saoluu_environment();
+    $migration_approval = null;
+    if ($migration_grant !== '') {
+        $gate = mg_saoluu_migration_production_gate();
+        if (is_wp_error($gate)) {
+            if ($prepared['temporary']) @unlink($zip_file);
+            return $gate;
+        }
+        if (!$restore_files || !$change_url || !mg_saoluu_is_encrypted_backup($backup_file)) {
+            if ($prepared['temporary']) @unlink($zip_file);
+            return new WP_Error('migration_full_required', 'Chuyển site cần bản mã hóa, DB + files và đổi URL.');
+        }
+        global $wpdb;
+        $plan = mg_saoluu_migration_manifest_preflight($manifest, home_url('/'), (string) $wpdb->prefix);
+        if (is_wp_error($plan)) {
+            if ($prepared['temporary']) @unlink($zip_file);
+            return $plan;
+        }
+        $fresh = mg_saoluu_migration_target_fresh();
+        if (is_wp_error($fresh)) {
+            if ($prepared['temporary']) @unlink($zip_file);
+            return $fresh;
+        }
+        $archive_sha = @hash_file('sha256', $backup_file);
+        if (!is_string($archive_sha)) {
+            if ($prepared['temporary']) @unlink($zip_file);
+            return new WP_Error('migration_hash', 'Không tính được SHA-256 gói chuyển site.');
+        }
+        $migration_approval = mg_saoluu_migration_verify_grant($migration_grant, $archive_sha, $manifest, home_url('/'));
+        if (is_wp_error($migration_approval)) {
+            if ($prepared['temporary']) @unlink($zip_file);
+            return $migration_approval;
+        }
+    }
     $source_env = sanitize_key($manifest['source_environment'] ?? '');
     $source_host = strtolower((string) ($manifest['source_host'] ?? ''));
     global $wpdb;
@@ -757,7 +795,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         if ($prepared['temporary']) @unlink($zip_file);
         return $prefix_guard;
     }
-    if ($target_env === 'production') {
+    if ($target_env === 'production' && $migration_approval === null) {
         if ($source_env !== 'production' || $source_host !== mg_saoluu_host()) {
             if ($prepared['temporary']) @unlink($zip_file);
             return new WP_Error('cross_env_production', 'Đã chặn: chỉ phục hồi bản được tạo từ chính web thật này.');
@@ -821,11 +859,21 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     }
 
     $target_settings = mg_saoluu_capture_target_settings();
+    if ($migration_approval !== null) {
+        $consume = mg_saoluu_migration_consume_grant($migration_approval);
+        if (is_wp_error($consume)) {
+            mg_saoluu_remove_tree($stage);
+            if ($prepared['temporary']) @unlink($zip_file);
+            return $consume;
+        }
+        // Keep the consumed nonce after importing the Local options table.
+        $target_settings['options']['mg_saoluu_used_migration_nonces'] = get_option('mg_saoluu_used_migration_nonces', []);
+    }
     $source_home = (string) ($manifest['source_url'] ?? '');
     $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
     $journal = [
         'status' => 'running',
-        'operation' => $rollback_restore ? 'rollback' : 'restore',
+        'operation' => $rollback_restore ? 'rollback' : ($migration_approval !== null ? 'migration' : 'restore'),
         'source' => basename($backup_file),
         'pre_backup' => $pre,
         'pre_backup_sha256' => strtolower($pre_hash),
@@ -865,7 +913,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         $journal_saved = mg_saoluu_restore_journal($journal);
         if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
         mg_saoluu_debug_log('restore_database_imported',['target_env'=>$target_env]);
-        if ($change_url && $target_env !== 'production') {
+        if (mg_saoluu_restore_should_change_url($change_url, $target_env, $migration_approval)) {
             if ($source_home && untrailingslashit($source_home) !== untrailingslashit($target_home)) {
                 $replace_report = mg_saoluu_search_replace_database($source_home, $target_home);
                 if (is_wp_error($replace_report)) throw new RuntimeException($replace_report->get_error_message());
@@ -884,7 +932,9 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
             if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
         }
         wp_cache_flush();
-        $health = mg_saoluu_restore_health_check($target_env !== 'production' ? $target_home : '');
+        $health = mg_saoluu_restore_health_check(
+            mg_saoluu_restore_should_change_url($change_url, $target_env, $migration_approval) ? $target_home : ''
+        );
         if (is_wp_error($health)) throw new RuntimeException($health->get_error_message());
         if ($rollback_restore) {
             $cleanup = mg_saoluu_remove_previous_restore_files($previous_journal);
@@ -976,7 +1026,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         'pre_backup' => $pre,
         'manifest' => $manifest,
         'replace' => $replace_report,
-        'operation' => $rollback_restore ? 'rollback' : 'restore',
+        'operation' => $rollback_restore ? 'rollback' : ($migration_approval !== null ? 'migration' : 'restore'),
         'rollback_checkpoint' => $rollback_restore ? basename($backup_file) : '',
     ];
 }
