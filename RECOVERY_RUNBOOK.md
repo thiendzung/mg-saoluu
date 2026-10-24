@@ -45,3 +45,23 @@ Công cụ sẽ kiểm tra từng checksum SHA-256 và xác thực AES-GCM khi g
 ## Giới hạn hiện tại
 
 v1.2.1-rc1 chưa có wizard restore Google Drive/offline tự động, restore thực tế qua cPanel/AZDIGI chưa nghiệm thu, dữ liệu DB+uploads không có snapshot filesystem nguyên tử, và offsite trên Google Drive chưa có xác minh tải lại/immutable retention. **Production restore: NO-GO cho tới khi có clone drill và Founder phê duyệt.**
+
+## RC3 — Test Host → Local + debug
+
+1. Trên site nguồn được phép backup, tạo bản mã hóa `local_copy` tại tab **Sao lưu**. Xác minh và tải gói về Mac; lưu Recovery Key nguồn trong password manager. Không dùng dữ liệu khách thật trong môi trường thử chưa được cô lập.
+2. Chuẩn bị **hai clone độc lập** với database và user khác nhau; không ghi đè `motgu.test` hoặc `motgu.com`. Trên clone đích tắt outbound email, payment, webhook, indexing, cron thật trước khi import.
+3. Trên clone đích, chọn **Khôi phục → Nhập .mgbackup/.zip**, điền Recovery Key nguồn, xác nhận, chọn database + files, bật chuyển URL. Prefix DB phải khớp.
+4. Kiểm tra GUID, Post/Artwork, WP media, WooCommerce HPOS, tables riêng, plugins/themes và URL. Khi lỗi rollback, clone chưa được coi là an toàn nếu chưa xác minh dữ liệu thực tế.
+5. Xem **Cài đặt → Hệ thống → Debug backup/restore**, tải JSONL; chỉ chứa checkpoint và trường dữ liệu được phép. File lưu ngoài webroot, tối đa ~2MB trước xoay vòng; Local/Staging mặc định bật, Production mặc định tắt.
+6. Nếu cần PHP error log trên **clone** riêng, đặt đoạn sau trong `wp-config.php` trước dòng stop editing, thay đường dẫn ngoài webroot cho phù hợp và tránh định nghĩa hằng số hai lần:
+
+```php
+define('WP_DEBUG', true);
+define('WP_DEBUG_LOG', '/absolute/private/path/wp-errors.log');
+define('WP_DEBUG_DISPLAY', false);
+@ini_set('display_errors', 0);
+```
+
+7. Không gửi raw PHP log hoặc ZIP backup qua chat vì có thể chứa dữ liệu riêng tư. Sau thử nghiệm, tắt logging PHP và bỏ clone theo runbook.
+
+**RC3 production restore vẫn bị khóa.** Đánh giá static/contract không chứng minh phục hồi website thật.
