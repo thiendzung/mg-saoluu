@@ -10,6 +10,7 @@ define('MG_SAOLUU_VERSION', '1.3.0-rc1');
 $GLOBALS['qa_url'] = 'https://staging.example.com';
 $GLOBALS['qa_count'] = 0;
 function add_action(...$args) {}
+function add_filter(...$args) {}
 function wp_parse_url($url, $component=-1) {return parse_url($url,$component);}
 function home_url($path='/') {return rtrim($GLOBALS['qa_url'],'/').$path;}
 function get_option($key,$default=null) {return $default;}
