@@ -3,10 +3,10 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.2.1-rc7
+Stable tag: 1.2.1-rc8
 License: GPLv2 or later
 
-MG Sao Luu v1.2.1-rc7 la pre-release thu nghiem Backup, Verify, Store, Restore tren clone.
+MG Sao Luu v1.2.1-rc8 la pre-release thu nghiem Backup, Verify, Store, Restore tren clone.
 
 == Description ==
 
@@ -29,7 +29,14 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 
 == Changelog ==
 
-= 1.2.1-rc7 =
+= 1.2.1-rc8 =
+* Fix transactional rollback: only report rolled_back after the original checkpoint is actually restored and cleanup succeeds.
+* Refuse restore when the current target is not healthy enough to create a trustworthy rollback checkpoint.
+* Preserve the original checkpoint if a rollback attempt fails but the safety recovery succeeds.
+* Fix restore duration calculation across WordPress/server timezone differences.
+
+
+= 1.2.1-rc8 =
 * Show the last real scheduled backup result and missed cron events in Overview.
 * Keep local verification distinct from failed or unverified Google Drive uploads.
 * Add isolated regression tests for schedule health; production restore stays blocked.
