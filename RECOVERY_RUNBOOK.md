@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.2.1 — Recovery Kit & Disaster Restore
+# MG Sao Lưu v1.2.1-rc3 — Recovery Kit & Disaster Restore
 
 ## Bước 0 — Trước khi có sự cố
 
