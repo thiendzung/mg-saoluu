@@ -1,6 +1,6 @@
-# MG Sao Lưu v1.2.1
+# MG Sao Lưu v1.3.0-rc3 (pre-release; Stable Backup/Restore + signed Migration QA)
 
-WordPress Backup → Verify → Store → Restore. Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
+WordPress Backup → Verify → Store → Restore, cộng thêm luồng Local → fresh Production migration có ký.  Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 
 ## Host → Local trial
 1. Install on dedicated WordPress clone(s) with separate databases; verify WordPress 7.1+, PHP 8.3+, ZipArchive/OpenSSL, mysql/mysqldump, outside-webroot storage.
@@ -16,7 +16,7 @@ SQL daily and full weekly are event-driven via WP-Cron. The Overview now display
 Plugin debug runs by default on Local/Staging only, OFF on Production, files stored outside webroot, 0600, 2 MB log rotation. An explicit `define('MG_SAOLUU_DEBUG', true);` overrides this for authorized staging/incident checks; disable afterwards. WordPress `WP_DEBUG_LOG` is separate. Do not expose PHP errors to public visitors.
 
 ### Constraints
-- Production restore chỉ nhận backup được tạo từ chính production host, manifest hợp lệ, Local đã ghép nối ký mở khóa 10 phút và quản trị viên xác nhận lại mật khẩu + host + câu xác nhận. Không dùng tính năng này để đồng bộ Local → live Host.
+- Bản RC3 khóa toàn bộ Restore/Migration ghi vào Production thật. Migration mutation chỉ được chạy trên Staging QA cô lập với opt-in, HTTPS, WP-Cron tắt và external I/O đã cách ly.nh production host, manifest hợp lệ, Local đã ghép nối ký mở khóa 10 phút và quản trị viên xác nhận lại mật khẩu + host + câu xác nhận. Không dùng tính năng này để đồng bộ Local → live Host.
 - Backup excludes wp-config.php, .htaccess, Recovery Key and host secrets. Keep Recovery Kit separately.
 - Google Drive uploads encrypted verified archives, but has no verified automatic download/restore flow.
 - Source/contract tests cannot substitute actual independent WordPress + MariaDB/MySQL restore drill.
@@ -29,3 +29,4 @@ Complex PHP-serialized values containing unavailable plugin objects, enums, cycl
 
 ### Restore engine self-protection
 Full backups may contain the MG Sao Luu plugin version that existed when the archive was created. During runtime Restore/Rollback, the plugin deliberately skips its own currently executing directory so an older archive cannot downgrade or replace the restore engine mid-transaction. The archived copy remains available for offline disaster recovery; restore of the plugin itself must be done separately from a trusted release ZIP/Recovery Runbook.
+\n\n### v1.3.0-rc3 migration scope\nLocal tạo `local_copy` mã hóa có `purpose=migration`, ký Ed25519 theo đúng SHA-256 + source/target + nonce 10 phút. Đích phải là WordPress trắng, cùng DB prefix, không media/comment/order/HPOS; URL đích phải là HTTPS public hostname. RC3 không ghi Production thật.\n\n### Performance\nTab Backup chỉ đọc catalog metadata để liệt kê tối đa 20 gói migration; không quét/decrypt toàn bộ thư mục backup chỉ để render UI. Preflight DB freshness chỉ chạy khi Stage/Apply migration, không chạy trên các tab thông thường.\n
