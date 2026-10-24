@@ -94,7 +94,7 @@ set_transient('mg_saoluu_system_checks', $legacy_cache, 120);
 $versioned_cache_key = mg_saoluu_system_checks_cache_key();
 test('system status uses a version-scoped cache key',
     $versioned_cache_key !== 'mg_saoluu_system_checks'
-    && str_contains($versioned_cache_key, '1_3_0_rc1')
+    && str_contains($versioned_cache_key, str_replace(['.', '-'], '_', MG_SAOLUU_VERSION))
     && get_transient($versioned_cache_key) === false);
 $lifecycle_source = file_get_contents(MG_SAOLUU_DIR . 'includes/lifecycle.php');
 test('Overview uses only the versioned status cache',
