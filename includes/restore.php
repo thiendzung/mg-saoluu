@@ -648,6 +648,86 @@ function mg_saoluu_remove_new_restore_files($relative_files, $unlink = null) {
     return $result;
 }
 
+/**
+ * Snapshot exact database schema object inventory before Restore.
+ * The plugin dumps the whole configured database, so rollback must restore
+ * the whole schema shape, not only rows inside checkpoint tables.
+ */
+function mg_saoluu_database_schema_inventory() {
+    global $wpdb;
+    $rows = $wpdb->get_results('SHOW FULL TABLES', ARRAY_N);
+    if (!is_array($rows)) return new WP_Error('rollback_schema_inventory_failed', 'Không đọc được inventory table/view của database.');
+    $inventory = [];
+    foreach ($rows as $row) {
+        $name = isset($row[0]) ? (string) $row[0] : '';
+        $kind = strtoupper((string) ($row[1] ?? 'BASE TABLE'));
+        if ($name === '' || strlen($name) > 64 || preg_match('/[\x00-\x1F\x7F]/', $name)) {
+            return new WP_Error('rollback_schema_inventory_invalid', 'Database có object name không an toàn để rollback tự động.');
+        }
+        $inventory[$name] = $kind === 'VIEW' ? 'view' : 'table';
+    }
+    ksort($inventory, SORT_STRING);
+    return $inventory;
+}
+
+function mg_saoluu_database_schema_fingerprint($inventory) {
+    if (!is_array($inventory)) return '';
+    ksort($inventory, SORT_STRING);
+    return hash('sha256', wp_json_encode($inventory, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+
+/**
+ * Reconcile current DB schema to the pre-Restore inventory after importing
+ * the rollback checkpoint. Extra views are removed before extra tables.
+ * Missing/type-mismatched baseline objects fail closed.
+ */
+function mg_saoluu_reconcile_database_schema($expected) {
+    global $wpdb;
+    if (!is_array($expected) || !$expected) {
+        return new WP_Error('rollback_schema_inventory_missing', 'Checkpoint thiếu inventory schema trước Restore; không thể xác nhận rollback chính xác.');
+    }
+    foreach ($expected as $name => $kind) {
+        if (!is_string($name) || $name === '' || strlen($name) > 64 || preg_match('/[\x00-\x1F\x7F]/', $name)
+            || !in_array($kind, ['table', 'view'], true)) {
+            return new WP_Error('rollback_schema_inventory_invalid', 'Inventory schema checkpoint không hợp lệ.');
+        }
+    }
+
+    $current = mg_saoluu_database_schema_inventory();
+    if (is_wp_error($current)) return $current;
+    $extra = array_diff_key($current, $expected);
+    $removed = 0;
+    $tick = chr(96);
+
+    foreach (['view', 'table'] as $kind) {
+        foreach ($extra as $name => $actual_kind) {
+            if ($actual_kind !== $kind) continue;
+            $quoted = str_replace($tick, $tick . $tick, $name);
+            $sql = $kind === 'view'
+                ? 'DROP VIEW IF EXISTS ' . $tick . $quoted . $tick
+                : 'DROP TABLE IF EXISTS ' . $tick . $quoted . $tick;
+            if ($wpdb->query($sql) === false) {
+                return new WP_Error('rollback_schema_drop_failed', 'Không xóa được database object phát sinh sau Restore: ' . $name);
+            }
+            $removed++;
+        }
+    }
+
+    $after = mg_saoluu_database_schema_inventory();
+    if (is_wp_error($after)) return $after;
+    if ($after !== $expected) {
+        return new WP_Error('rollback_schema_mismatch', 'Schema sau rollback chưa khớp chính xác checkpoint; đã dừng và yêu cầu kiểm tra thủ công.');
+    }
+    return [
+        'expected' => count($expected),
+        'before' => count($current),
+        'extra' => count($extra),
+        'removed' => $removed,
+        'after' => count($after),
+        'fingerprint' => mg_saoluu_database_schema_fingerprint($after),
+    ];
+}
+
 /** Remove files introduced by the completed restore when applying its rollback checkpoint. */
 function mg_saoluu_remove_previous_restore_files($journal) {
     $empty = ['requested' => 0, 'removed' => 0, 'already_absent' => 0, 'failed' => 0];
