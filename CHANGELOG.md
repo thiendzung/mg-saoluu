@@ -1,3 +1,11 @@
+## 1.2.1-rc9 — Restore engine self-protection (2026-10-24)
+
+- Full backup archives continue to include MG Sao Luu for offline recovery completeness.
+- Runtime Restore/Rollback now skips the currently executing MG Sao Luu plugin directory during extraction, copy, new-file bookkeeping and cleanup, preventing an older backup from downgrading the active restore engine mid-transaction.
+- UI explicitly documents that the running restore engine is preserved and must be restored separately from a trusted release ZIP if needed.
+- Add regression coverage proving an archived RC7-style plugin payload cannot overwrite or delete an RC9 runtime plugin.
+- RC8 transactional rollback and timezone fixes are retained; production restore remains blocked for RC builds.
+
 ## 1.2.1-rc8 — Transactional rollback remediation (2026-10-24)
 
 - Require a healthy current target before minting the pre-restore rollback checkpoint; a DB that references a missing active theme fails closed before any restore write.
