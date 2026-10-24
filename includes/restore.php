@@ -127,7 +127,8 @@ function mg_saoluu_extract_to_stage($zip_file, $stage_dir, $include_files) {
         $in = $zip->getStream($stat['name']);
         $out = @fopen($dest, 'wb');
         if (!$in || !$out) { if ($in) fclose($in); if ($out) fclose($out); $zip->close(); return new WP_Error('stage_write_failed', 'Không thể đọc file trong ZIP: ' . $name); }
-        stream_copy_to_stream($in, $out); fclose($in); fclose($out);
+        $copied = stream_copy_to_stream($in, $out); fclose($in); fclose($out);
+        if ($copied === false || $copied !== (int) ($stat['size'] ?? -1)) { $zip->close(); return new WP_Error('stage_incomplete', 'File giải nén bị thiếu dữ liệu: '.$name); }
     }
     $zip->close();
     if (!is_readable($stage_dir . 'database_backup.sql')) return new WP_Error('sql_missing', 'Không tìm thấy database_backup.sql sau khi giải nén.');
@@ -461,12 +462,13 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
     $journal = ['status' => 'running', 'source' => basename($backup_file), 'pre_backup' => $pre, 'restore_files' => (bool) $restore_files, 'new_file_count' => count($new_files), 'started_at' => current_time('mysql')];
     mg_saoluu_restore_journal($journal);
+    mg_saoluu_debug_log('restore_started',['type'=>$type,'source_env'=>$source_env,'target_env'=>$target_env,'restore_files'=>$restore_files]);
     mg_saoluu_maintenance(true);
     $error = null; $replace_report = ['tables' => 0, 'rows' => 0];
     try {
         $import = mg_saoluu_run_mysql_import($stage . 'database_backup.sql');
         if (is_wp_error($import)) throw new RuntimeException($import->get_error_message());
-        $journal['status'] = 'database_imported'; mg_saoluu_restore_journal($journal);
+        $journal['status'] = 'database_imported'; mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_database_imported',['target_env'=>$target_env]);
         if ($change_url && $target_env !== 'production') {
             if ($source_home && untrailingslashit($source_home) !== untrailingslashit($target_home)) {
                 $replace_report = mg_saoluu_search_replace_database($source_home, $target_home);
@@ -486,10 +488,10 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         wp_cache_flush();
         $health = mg_saoluu_restore_health_check($target_env !== 'production' ? $target_home : '');
         if (is_wp_error($health)) throw new RuntimeException($health->get_error_message());
-        $journal['status'] = 'completed'; $journal['completed_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal);
+        $journal['status'] = 'completed'; $journal['completed_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_complete',['type'=>$type]);
     } catch (Throwable $e) {
         $error = new WP_Error('restore_failed', $e->getMessage());
-        $journal['status'] = 'rolling_back'; $journal['error'] = sanitize_text_field($e->getMessage()); mg_saoluu_restore_journal($journal);
+        $journal['status'] = 'rolling_back'; $journal['error'] = sanitize_text_field($e->getMessage()); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_rollback_started',['type'=>$type]);
         $rollback = mg_saoluu_rollback_from_backup($pre_path, $restore_files, $rollback_password, $target_settings);
         if (is_wp_error($rollback)) {
             $journal['status'] = 'rollback_failed'; $journal['rollback_error'] = $rollback->get_error_message(); mg_saoluu_restore_journal($journal);
