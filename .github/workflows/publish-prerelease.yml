@@ -64,7 +64,7 @@ jobs:
           sh scripts/verify_rc3_release.sh "$zipfile" | tee "$RUNNER_TEMP/mgsl-rc9-gates.log"
           test "$(grep -Fxc 'TESTS 106/106 PASS' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
           test "$(grep -Fxc 'TESTS 4/4 PASS' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
-          test "$(grep -Fxc 'MIGRATION TESTS 34/34 PASS' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
+          test "$(grep -Fxc 'MIGRATION TESTS 35/35 PASS' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
           test "$(grep -Fxc 'QA GATE TESTS 4/4 PASS' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
           test "$(grep -Fxc 'PASS integrity manifest matches 28 source files' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
           unzip -t "$zipfile" >/dev/null
