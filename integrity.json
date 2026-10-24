@@ -6,11 +6,11 @@
   "files": {
     ".htaccess": "8a140e242a320239d8217be279f4ee83a7157f45c3b9df5f121e868997af81ef",
     "CHANGELOG.md": "7fe0bc32ff47fe285f9356e6bf1bfbeb1d605c0e60493ece9ade1db20d2e1196",
-    "README.md": "42f23f8d3638a5fa6651d636702d97f1e746483462676a47f3c6364861a529b4",
+    "README.md": "c4886faa4346d74fc357730f958087f4569517214c38fd93284a6943d7cb12ff",
     "RECOVERY_RUNBOOK.md": "7207575cad63f1da808d742cfac60b92c82d64ed913d2cdf92ea1fe17f136541",
     "admin/actions.php": "145b37b7b120673ff0019d84b4bcba113687e758a5779f0200f5628ea5825934",
     "admin/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
-    "admin/render.php": "e9a919fc478c1701b00148950c2116833fd1b847a1adc179c43eb6abfe589b47",
+    "admin/render.php": "818b23917b9030e1068b96611d3fef7e42599401676d638f43e743b5ed362e33",
     "assets/css/admin.css": "b517e19e7e28c7523987854f3bed54e5f51d468d6b0adde9d2bc4ce28612264d",
     "assets/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "assets/js/admin.js": "d564c0b2884c1fe99c27714271e23a8a3189e3a83810fefaa419418a18cabfac",
@@ -18,7 +18,7 @@
     "includes/catalog.php": "0e6b7c8b69f7ce809819f250202e352b812d08b150314f501862dfa2bf201d32",
     "includes/core.php": "3c94775ed83f8f999b2801196c639e16e184bb2b3438827c3f8d111018a41675",
     "includes/crypto.php": "13e46de16c686a78094c1286fe3eb324cf8150b354a776e266e95d3421a0862b",
-    "includes/environment.php": "4e1f6956aae194092b444de3c950ef14be21b53522d62f789b6b098b4ebd793a",
+    "includes/environment.php": "9e03b4b1f514eae5f38a79ab39f8460c190395f79cfc3e6639137c2d94a36153",
     "includes/google-drive.php": "4a76d69e15fc70237a8a77a1fd2c11b0b4e2b66a55b341342014d56b125c98a7",
     "includes/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "includes/integrity.php": "7baa4468cf9920055f44b87d1d6d0f4b1875fd45e4dfb55c648a04feac6451d9",
@@ -31,6 +31,6 @@
     "tools/recovery-verify.php": "69c3a6340616210aaffdfd5deec941c51d3f649d4f8ec3413f016506d9b934da",
     "uninstall.php": "cef8058aeeb6d808286f5b50cb7a7b887597114e37ddfc64ecf7590082ff2e51",
     "includes/diagnostics.php": "6e3960c4a4eba796df808d4e6653d3dec60c7ecaaf70ee8f21602429d3c17e44",
-    "includes/migration.php": "e20852e5a9daec929fd1f8c83d260c1b188f8783b21c5570eae8a56369bd06fe"
+    "includes/migration.php": "2ab0d61c5e62ca0622ef9213936020f0c595dd3e04f9aa4cd6d631bafd176f34"
   }
 }
