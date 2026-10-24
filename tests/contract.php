@@ -282,6 +282,7 @@ test('maintenance symlink cannot overwrite outside sentinel',
 class FixtureSchemaDB {
  public array $objects;
  public array $queries=[];
+ public bool $fail_drop=false;
  public function __construct($objects){$this->objects=$objects;}
  public function get_results($sql,$mode=null){
    if ($sql==='SHOW FULL TABLES') {
@@ -291,6 +292,7 @@ class FixtureSchemaDB {
  }
  public function query($sql){
    $this->queries[]=$sql;
+   if ($this->fail_drop) return false;
    if (preg_match('/^DROP (?:TABLE|VIEW) IF EXISTS `((?:``|[^`])+)`$/', $sql, $m)) {
      $name=str_replace('``','`',$m[1]); unset($this->objects[$name]); return 1;
    }
@@ -319,6 +321,22 @@ test('rollback schema reconcile fails closed when baseline inventory is missing'
     is_wp_error($missing_inventory)
     && $missing_inventory->get_error_code()==='rollback_schema_inventory_missing'
     && count($wpdb->objects)===83);
+
+$wpdb = new FixtureSchemaDB($after_migration);
+$wpdb->fail_drop=true;
+$drop_failure = mg_saoluu_reconcile_database_schema($baseline_schema);
+test('rollback schema reconcile fails closed on DROP failure',
+    is_wp_error($drop_failure)
+    && $drop_failure->get_error_code()==='rollback_schema_drop_failed'
+    && count($wpdb->objects)===83);
+
+$type_mismatch=$baseline_schema;
+$type_mismatch['wp_baseline_01']='view';
+$wpdb = new FixtureSchemaDB($type_mismatch);
+$schema_mismatch = mg_saoluu_reconcile_database_schema($baseline_schema);
+test('rollback schema reconcile fails closed on object type mismatch',
+    is_wp_error($schema_mismatch)
+    && $schema_mismatch->get_error_code()==='rollback_schema_mismatch');
 
 // Restore baseline must be internally healthy BEFORE a rollback checkpoint can
 // be trusted. A DB pointing to a missing active theme is not a safe baseline.
@@ -577,7 +595,7 @@ $unknown=mg_saoluu_backup_prefix_preflight([],'wp_',true);
 test('legacy cross-site unknown prefix blocked',is_wp_error($unknown)&&$unknown->get_error_code()==='backup_prefix_unknown');
 test('legacy same-site prefix still allowed',mg_saoluu_backup_prefix_preflight([],'wp_',false)===true);
 
-// Stable backend safety and honest archive statuses retained in RC3.
+// Stable backend safety and honest archive statuses retained in RC4.
 test('catalog requires actual restore-drill proof', !mg_saoluu_catalog_has_recovery_proof([
  'type'=>'safe_full','integrity_status'=>'verified','restore_tested'=>false
 ]));
@@ -623,7 +641,7 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// RC3 must reject stale/direct approval and migration mutation POSTs even with
+// RC4 must reject stale/direct approval and migration mutation POSTs even with
 // valid admin permissions/nonce. Production writing stays hard-blocked in RC.
 foreach (['security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval'] as $blocked_action) {
     $_POST = ['mg_action' => $blocked_action, 'mg_nonce' => 'fixture'];
@@ -639,7 +657,6 @@ foreach (['migration_stage', 'migration_apply'] as $migration_action) {
     test('RC prevents production migration POST: ' . $migration_action,
         $blocked_status === 'error' && $blocked_message !== '');
 }
-$_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 
 // WordPress-independent AES-GCM decryption: binary roundtrip + wrong-key block.
