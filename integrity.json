@@ -6,7 +6,7 @@
   "files": {
     ".htaccess": "8a140e242a320239d8217be279f4ee83a7157f45c3b9df5f121e868997af81ef",
     "CHANGELOG.md": "7fe0bc32ff47fe285f9356e6bf1bfbeb1d605c0e60493ece9ade1db20d2e1196",
-    "README.md": "c4886faa4346d74fc357730f958087f4569517214c38fd93284a6943d7cb12ff",
+    "README.md": "8e37d959a410195f412ca8808962e6b1439acce64030c5bd08bcf1c086c38ab8",
     "RECOVERY_RUNBOOK.md": "7207575cad63f1da808d742cfac60b92c82d64ed913d2cdf92ea1fe17f136541",
     "admin/actions.php": "145b37b7b120673ff0019d84b4bcba113687e758a5779f0200f5628ea5825934",
     "admin/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
@@ -31,6 +31,6 @@
     "tools/recovery-verify.php": "69c3a6340616210aaffdfd5deec941c51d3f649d4f8ec3413f016506d9b934da",
     "uninstall.php": "cef8058aeeb6d808286f5b50cb7a7b887597114e37ddfc64ecf7590082ff2e51",
     "includes/diagnostics.php": "6e3960c4a4eba796df808d4e6653d3dec60c7ecaaf70ee8f21602429d3c17e44",
-    "includes/migration.php": "2ba808ba3d38b53f510567b9be8ebc3c8c2875e23a8119aa4c3f7c7c32b667ad"
+    "includes/migration.php": "bdd22215b01f5dd74b7e10eefab39f7294c396a93a7e0d05d8880416992ff237"
   }
 }
