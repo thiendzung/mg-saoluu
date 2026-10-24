@@ -132,6 +132,10 @@ function mg_saoluu_render_page() {
     $security_output = [];
     $trusted_signers = [];
     $security_device = [];
+    $restore_journal = [];
+    $checkpoint_name = '';
+    $checkpoint_sha = '';
+    $restore_seconds = null;
 
     if (in_array($page_section, ['overview', 'restore', 'backups', 'schedule'], true)) {
         $backup_dir = mg_saoluu_get_backup_dir();
@@ -177,7 +181,26 @@ function mg_saoluu_render_page() {
         $drive_auto_upload = get_option('mg_saoluu_drive_auto_upload','0') === '1';
     }
     if (in_array($page_section, ['restore','system'], true)) $self_integrity = mg_saoluu_self_integrity();
-    if ($active === 'restore') { $sql_limit = min(MG_SAOLUU_MAX_SQL_UPLOAD, (int) wp_max_upload_size()); $zip_limit = min((int) wp_max_upload_size(), 2 * 1024 * 1024 * 1024); }
+    if ($active === 'restore') {
+        $sql_limit = min(MG_SAOLUU_MAX_SQL_UPLOAD, (int) wp_max_upload_size());
+        $zip_limit = min((int) wp_max_upload_size(), 2 * 1024 * 1024 * 1024);
+        $restore_journal = mg_saoluu_restore_journal();
+        if (!is_array($restore_journal)) $restore_journal = [];
+        $name = basename((string) ($restore_journal['pre_backup'] ?? ''));
+        $hash = strtolower((string) ($restore_journal['pre_backup_sha256'] ?? ''));
+        if ($name !== '' && mg_saoluu_is_backup_filename($name) &&
+            preg_match('/^[a-f0-9]{64}$/', $hash) &&
+            in_array($backup_dir . $name, $files, true)) {
+            // Display journal linkage; the actual file hash is checked on restore.
+            $checkpoint_name = $name;
+            $checkpoint_sha = $hash;
+        }
+        if (!empty($restore_journal['started_at']) && !empty($restore_journal['completed_at'])) {
+            $start = strtotime((string) $restore_journal['started_at']);
+            $end = strtotime((string) $restore_journal['completed_at']);
+            if ($start !== false && $end !== false && $end >= $start) $restore_seconds = $end - $start;
+        }
+    }
 
     $drive_notice = get_transient('mg_saoluu_drive_notice_' . get_current_user_id());
     if ($drive_notice) delete_transient('mg_saoluu_drive_notice_' . get_current_user_id());
@@ -231,6 +254,37 @@ function mg_saoluu_render_page() {
             <div class="mgsl-card mgsl-note">Muốn thử khôi phục dữ liệu production trên Mac, hãy dùng bản sao WordPress/DBngin độc lập và Recovery Kit. Không restore đè motgu.test đang phát triển.</div>
 
         <?php elseif ($active === 'restore'): ?>
+            <?php
+            $last_status = (string) ($restore_journal['status'] ?? '');
+            $labels = [
+                'completed' => 'Đã hoàn tất', 'rolled_back' => 'Đã quay lại',
+                'rollback_failed' => 'Cần xử lý lỗi',
+                'maintenance_cleanup_failed' => 'Cần kiểm tra bảo trì',
+                'journal_invalid' => 'Nhật ký hỏng hoặc không đọc được',
+                'running' => 'Chưa hoàn tất', 'database_imported' => 'Chưa hoàn tất',
+                'files_copied' => 'Chưa hoàn tất', 'rolling_back' => 'Chưa hoàn tất',
+            ];
+            $last_label = $labels[$last_status] ?? ($last_status === '' ? 'Chưa có lượt khôi phục' : 'Trạng thái chưa rõ, cần kiểm tra');
+            $unfinished = $last_status !== '' && !in_array($last_status, ['completed', 'rolled_back'], true);
+            $cleanup = $restore_journal['rollback_file_cleanup'] ?? [];
+            ?>
+            <section class="mgsl-card" aria-label="Trạng thái khôi phục gần nhất">
+                <h2 class="mgsl-title">Lần khôi phục gần nhất</h2>
+                <p><strong><?php echo esc_html($last_label); ?></strong>
+                <?php if (!empty($restore_journal['completed_at'])): ?> · <?php echo esc_html($restore_journal['completed_at']); ?><?php endif; ?>
+                <?php if ($restore_seconds !== null): ?> · <?php echo (int) $restore_seconds; ?> giây<?php endif; ?></p>
+                <?php if ($checkpoint_name !== ''): ?>
+                    <p class="mgsl-small">Checkpoint liên kết: <code><?php echo esc_html($checkpoint_name); ?></code>
+                    · SHA-256 trong nhật ký: <code><?php echo esc_html(substr($checkpoint_sha, 0, 12)); ?>…</code>
+                    (plugin kiểm tra đầy đủ SHA trước khi sử dụng).</p>
+                <?php endif; ?>
+                <?php if (is_array($cleanup) && $cleanup): ?>
+                    <p class="mgsl-small">Dọn file khi rollback: <?php echo (int) ($cleanup['requested'] ?? 0); ?> yêu cầu,
+                    <?php echo (int) ($cleanup['removed'] ?? 0); ?> đã xóa,
+                    <?php echo (int) ($cleanup['failed'] ?? 0); ?> lỗi.</p>
+                <?php endif; ?>
+                <?php if ($unfinished): ?><div class="mgsl-note mgsl-danger"><strong>Khôi phục chưa kết thúc an toàn.</strong> Không chạy thêm restore cho đến khi kiểm tra Recovery Runbook và checkpoint.</div><?php endif; ?>
+            </section>
             <section class="mgsl-card mgsl-note mgsl-warning"><strong>Restore là thao tác ghi dữ liệu.</strong> Luôn thử trên clone có WordPress và DB riêng trước. Có checksum chưa đồng nghĩa đã phục hồi thành công. Khi website hỏng không vào được WP Admin, làm theo RECOVERY_RUNBOOK.md trong gói plugin.</section>
             <?php if (empty($self_integrity['ok'])): ?><div class="mgsl-card mgsl-note mgsl-danger"><strong>Khôi phục đang bị khóa.</strong> File của MG Sao Lưu đang thiếu hoặc lệch phiên bản. Hãy cài lại đúng ZIP rồi kiểm tra lại.</div><?php endif; ?>
             <?php if ($env === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false): ?>
@@ -253,14 +307,18 @@ function mg_saoluu_render_page() {
                     <?php endif; ?>
                 </section>
             <?php endif; ?>
-            <section class="mgsl-card"><h2 class="mgsl-title">Khôi phục từ bản đang lưu</h2><?php if (!$files): ?><p>Chưa có bản sao.</p><?php else: ?><form method="post" onsubmit="return confirm('Dữ liệu hiện tại sẽ bị thay thế. Tiếp tục?');"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="restore_saved"><input type="hidden" name="return_tab" value="restore"><div class="mgsl-form-row"><div class="mgsl-field"><label>Chọn bản sao</label><select name="file_name"><?php foreach ($files as $file): ?><option value="<?php echo esc_attr(basename($file)); ?>"><?php echo esc_html(basename($file)); ?></option><?php endforeach; ?></select></div><div class="mgsl-field"><label>Phần cần phục hồi</label><select name="restore_mode"><option value="database">Chỉ database</option><option value="files_database">File website + database</option></select></div><div class="mgsl-field"><label>Nhập câu xác nhận</label><input type="text" name="restore_phrase" placeholder="<?php echo esc_attr($phrase); ?>" required></div><div><button class="button button-secondary" <?php disabled(empty($self_integrity['ok']) || ($env==='production' && (!$production_unlocked || strpos(MG_SAOLUU_VERSION, '-rc') !== false))); ?> style="width:100%">Khôi phục</button></div></div><p class="mgsl-field"><label>Mật khẩu nếu bản sao đã mã hóa</label><input type="password" name="backup_password" autocomplete="current-password" placeholder="Để trống nếu bản sao không mã hóa"></p><?php if ($env === 'production'): ?><div class="mgsl-sensitive-box"><div class="mgsl-field"><label>Mật khẩu tài khoản quản trị hiện tại</label><input type="password" name="admin_password" autocomplete="current-password" required></div><div class="mgsl-field"><label>Nhập lại domain web thật</label><input type="text" name="restore_host" placeholder="<?php echo esc_attr(mg_saoluu_host()); ?>" required></div><p class="mgsl-small mgsl-muted">Ngoài chữ ký Local, thao tác vẫn yêu cầu mật khẩu admin + câu RESTORE đúng domain. Sai 5 lần sẽ khóa 30 phút.</p></div><?php endif; ?><p><label><input type="checkbox" name="change_url" value="1" <?php checked($env !== 'production'); ?>> Tự đổi tên miền nguồn thành tên miền hiện tại</label></p><p><label><input type="checkbox" name="restore_confirm" value="1" required> Tôi hiểu dữ liệu hiện tại sẽ bị thay thế</label></p></form><?php endif; ?></section>
+            <section class="mgsl-card"><h2 class="mgsl-title">Khôi phục từ bản đang lưu</h2><p class="mgsl-small">Không cần upload lại nếu file đã có trên máy chủ. Checkpoint liên kết được đánh dấu; vẫn phải xác nhận trước khi ghi đè.</p><?php if (!$files): ?><p>Chưa có bản sao.</p><?php else: ?><form method="post" onsubmit="return confirm('Dữ liệu hiện tại sẽ bị thay thế. Tiếp tục?');"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="restore_saved"><input type="hidden" name="return_tab" value="restore"><div class="mgsl-form-row"><div class="mgsl-field"><label>Chọn bản sao</label><select name="file_name"><?php foreach ($files as $file): ?><option value="<?php echo esc_attr(basename($file)); ?>"><?php echo esc_html(basename($file)); ?><?php if ($checkpoint_name && basename($file) === $checkpoint_name): ?> · Checkpoint liên kết<?php endif; ?></option><?php endforeach; ?></select></div><div class="mgsl-field"><label>Phần cần phục hồi</label><select name="restore_mode"><option value="database">Chỉ database</option><option value="files_database">File website + database</option></select></div><div class="mgsl-field"><label>Nhập câu xác nhận</label><input type="text" name="restore_phrase" placeholder="<?php echo esc_attr($phrase); ?>" required></div><div><button class="button button-secondary" <?php disabled(empty($self_integrity['ok']) || ($env==='production' && (!$production_unlocked || strpos(MG_SAOLUU_VERSION, '-rc') !== false))); ?> style="width:100%">Khôi phục</button></div></div><p class="mgsl-field"><label>Mật khẩu nếu bản sao đã mã hóa</label><input type="password" name="backup_password" autocomplete="current-password" placeholder="Để trống nếu bản sao không mã hóa"></p><?php if ($env === 'production'): ?><div class="mgsl-sensitive-box"><div class="mgsl-field"><label>Mật khẩu tài khoản quản trị hiện tại</label><input type="password" name="admin_password" autocomplete="current-password" required></div><div class="mgsl-field"><label>Nhập lại domain web thật</label><input type="text" name="restore_host" placeholder="<?php echo esc_attr(mg_saoluu_host()); ?>" required></div><p class="mgsl-small mgsl-muted">Ngoài chữ ký Local, thao tác vẫn yêu cầu mật khẩu admin + câu RESTORE đúng domain. Sai 5 lần sẽ khóa 30 phút.</p></div><?php endif; ?><p><label><input type="checkbox" name="change_url" value="1" <?php checked($env !== 'production'); ?>> Tự đổi tên miền nguồn thành tên miền hiện tại</label></p><p><label><input type="checkbox" name="restore_confirm" value="1" required> Tôi hiểu dữ liệu hiện tại sẽ bị thay thế</label></p></form><?php endif; ?></section>
             <?php if ($env !== 'production'): ?>
             <details class="mgsl-card"><summary><strong>Nhập .mgbackup/.zip trên clone Local/Staging</strong></summary>
             <p>Chỉ dùng clone riêng, database riêng và file nguồn đáng tin cậy. Database hiện tại bị thay thế.</p>
+            <div class="mgsl-note <?php echo $zip_limit < 100 * 1024 * 1024 ? 'mgsl-warning' : ''; ?>">
+                <strong>Giới hạn upload PHP hiện tại: <?php echo esc_html(size_format($zip_limit)); ?>.</strong>
+                <?php if ($zip_limit < 100 * 1024 * 1024): ?> Nếu backup lớn hơn, dùng Khôi phục từ bản đang lưu hoặc chỉ chỉnh giới hạn PHP trên clone.<?php endif; ?>
+            </div>
             <form method="post" enctype="multipart/form-data">
               <?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
               <input type="hidden" name="mg_action" value="restore_zip_upload"><input type="hidden" name="return_tab" value="restore">
-              <p><label>Backup (tối đa <?php echo esc_html(size_format($zip_limit)); ?>) <input type="file" name="zip_file" accept=".mgbackup,.zip" required></label></p>
+              <p><label>Backup (tối đa <?php echo esc_html(size_format($zip_limit)); ?>) <input type="file" name="zip_file" accept=".mgbackup,.zip" data-mgsl-max-upload="<?php echo esc_attr((string) $zip_limit); ?>" required></label></p>
               <p><label>Recovery Key nguồn <input type="password" name="backup_password" autocomplete="off"></label></p>
               <p><label>Khôi phục <select name="restore_mode"><option value="database">Database</option><option value="files_database">Database + files</option></select></label></p>
               <p><label><input type="checkbox" name="change_url" value="1" checked>Đổi URL về tên miền clone, giữ GUID</label></p>

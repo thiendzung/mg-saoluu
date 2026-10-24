@@ -336,3 +336,9 @@
 .mgsl-settings-nav{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0 20px}
 .mgsl-settings-nav .button{min-height:40px;display:inline-flex;align-items:center}
 .mgsl-settings-nav .button:focus-visible{outline:3px solid #2271b1;outline-offset:2px}
+
+/* Honest pending state; the final result is returned by WordPress. */
+.mgsl-operation-pending { background:#f0f6fc; border-left:4px solid #2271b1; border-radius:6px; padding:12px 14px; margin:12px 0; color:#1d2327; font-weight:600; }
+.mgsl-operation-pending::before { content:'◌'; display:inline-block; margin-right:8px; animation:mgsl-spin 1.4s linear infinite; }
+@keyframes mgsl-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .mgsl-operation-pending::before { animation:none; } }

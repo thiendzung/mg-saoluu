@@ -37,6 +37,7 @@ function get_transient($key) {return $GLOBALS['test_transients'][$key]??false;}
 function set_transient($key,$value,$ttl=0) {$GLOBALS['test_transients'][$key]=$value;return true;}
 function delete_transient($key){unset($GLOBALS['test_transients'][$key]);}
 function wp_json_encode($v,$options=0){return json_encode($v,$options);}
+function size_format($bytes){return (string) $bytes;}
 function current_time($type='mysql'){return '2026-10-24 12:00:00';}
 function home_url($p='/'){return 'https://motgu.com'.(str_starts_with($p,'/')?'':'/').$p;}
 function get_post_meta($id,$key,$single=false){return $id === 2?'12345678-1234-4234-a234-123456789abc':'';}
@@ -56,7 +57,7 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.2.1-rc5');
+define('MG_SAOLUU_VERSION', '1.2.1-rc6');
 function add_action(){}
 function mg_saoluu_environment(){return 'local';}
 function mg_saoluu_is_local_environment(){return true;}
@@ -97,6 +98,33 @@ symlink(ABSPATH.'wp-content', $root.'/outside/link-uploads');
 test('reject symlink pointing into webroot',!mg_saoluu_storage_path_safe($root.'/outside/link-uploads/private'));
 test('accept real external directory',mg_saoluu_storage_path_safe($root.'/outside/vault'));
 test('reject relative path',!mg_saoluu_storage_path_safe('wp-content/backups'));
+
+// Two-volume space budget must fail closed before touching a WordPress DB.
+$MiB = 1024 * 1024;
+$separate_small = mg_saoluu_restore_space_budget(600*$MiB, 30*$MiB, false, 300*$MiB, 100*$MiB);
+test('restore preflight rejects low target disk', is_wp_error($separate_small) && $separate_small->get_error_code() === 'restore_target_space');
+$shared_small = mg_saoluu_restore_space_budget(360*$MiB, 360*$MiB, true, 300*$MiB, 100*$MiB);
+test('restore preflight budgets both reserves on shared disk', is_wp_error($shared_small) && $shared_small->get_error_code() === 'restore_space');
+$shared_fallback = mg_saoluu_restore_space_budget(false, 360*$MiB, true, 300*$MiB, 100*$MiB);
+test('restore shared disk uses site free when work reading unavailable', is_wp_error($shared_fallback));
+test('restore preflight permits adequate disk reserves', mg_saoluu_restore_space_budget(500*$MiB, 500*$MiB, true, 300*$MiB, 100*$MiB) === true);
+
+// Simulate short writes and a disk-full mid-chunk, without filling the host disk.
+$short_output = fopen('php://temp', 'w+b');
+$short_writer = static function ($h, $chunk) { return fwrite($h, substr($chunk, 0, 3)); };
+$all_written = mg_saoluu_write_all($short_output, 'hello-world', $short_writer);
+rewind($short_output);
+test('short fwrite is retried until all bytes persist', $all_written && stream_get_contents($short_output) === 'hello-world');
+fclose($short_output);
+$blocked_output = fopen('php://temp', 'w+b');
+$write_calls = 0;
+$disk_full_writer = static function ($h, $chunk) use (&$write_calls) {
+    $write_calls++;
+    return $write_calls === 1 ? fwrite($h, substr($chunk, 0, 2)) : 0;
+};
+test('mid-chunk fwrite failure stops without claiming success',
+    mg_saoluu_write_all($blocked_output, 'more-data', $disk_full_writer) === false);
+fclose($blocked_output);
 
 // Restore destination containment: ordinary files pass, symlink leaves/ancestors fail closed.
 $outside_sentinel = $root . '/outside/restore-sentinel.txt';
@@ -235,6 +263,31 @@ file_put_contents($denied_fixture, 'must remain');
 $delete_failure = mg_saoluu_remove_new_restore_files(['wp-content/uploads/rc3-rollback-denied.txt'], static function ($target) { return false; });
 test('rollback cleanup marks required deletion failure',$delete_failure['requested']===1&&$delete_failure['removed']===0&&$delete_failure['failed']===1&&file_exists($denied_fixture));
 
+// Journal must persist atomically and fail closed when its destination is unsafe.
+$journal_path = $external . 'restore-journal.json';
+$journal_written = mg_saoluu_restore_journal(['status' => 'completed', 'pre_backup' => 'fixture.mgbackup']);
+test('restore journal atomically written and readable',
+    is_array($journal_written) && (mg_saoluu_restore_journal()['status'] ?? '') === 'completed'
+    && substr(sprintf('%o', fileperms($journal_path)), -4) === '0600');
+$journal_save = $journal_path . '.hold';
+rename($journal_path, $journal_save);
+symlink($outside_sentinel, $journal_path);
+$blocked_journal = mg_saoluu_restore_journal(['status' => 'completed']);
+test('symlinked restore journal fails closed and cannot touch external data',
+    is_wp_error($blocked_journal) && $blocked_journal->get_error_code() === 'journal_write_failed'
+    && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+unlink($journal_path);
+rename($journal_save, $journal_path);
+file_put_contents($journal_path, '{');
+test('malformed restore journal blocks further DB mutation',
+    mg_saoluu_restore_journal_unfinished(mg_saoluu_restore_journal()));
+mg_saoluu_restore_journal(['status' => 'running']);
+$blocked_restore = mg_saoluu_restore_zip($root . '/not-present.mgbackup', true);
+test('interrupted restore blocks another restore before SQL import',
+    is_wp_error($blocked_restore) && $blocked_restore->get_error_code() === 'restore_unfinished');
+test('unknown journal status blocks future restore', mg_saoluu_restore_journal_unfinished(['status' => 'unknown_state']));
+mg_saoluu_restore_journal(['status' => 'completed']);
+
 // Rollback cleanup must bind to the exact current checkpoint; stale copies fail closed,
 // while an uploaded byte-for-byte copy remains safe to accept.
 $checkpoint_a = $external . 'backup_pre_restore_safe_full_20261024_120001_000001.mgbackup';
@@ -268,6 +321,12 @@ $uploaded_b = $checkpoint_upload_dir . '/mg-upload-random.mgbackup';
 copy($checkpoint_b, $uploaded_b);
 $uploaded_b = mg_saoluu_rollback_checkpoint_context($uploaded_b, ['purpose' => 'rollback'], true);
 test('uploaded exact checkpoint binds by SHA',!is_wp_error($uploaded_b)&&$uploaded_b['rollback']===true);
+$introduced_file = ABSPATH . 'wp-content/uploads/rc3-rollback-b.txt';
+file_put_contents($introduced_file, 'introduced by restored archive');
+$removed_with_journal = mg_saoluu_remove_previous_restore_files($uploaded_b['journal']);
+test('associated checkpoint removes files introduced by completed restore',
+    $removed_with_journal['requested'] === 1 && $removed_with_journal['removed'] === 1
+    && $removed_with_journal['failed'] === 0 && !file_exists($introduced_file));
 $uploaded_stale = $checkpoint_upload_dir . '/mg-upload-stale.mgbackup';
 copy($checkpoint_a, $uploaded_stale);
 $uploaded_stale_context = mg_saoluu_rollback_checkpoint_context($uploaded_stale, ['purpose' => 'rollback'], true);
@@ -425,5 +484,11 @@ $setup_actions = file_get_contents(MG_SAOLUU_DIR.'admin/actions.php');
 $setup_ui = file_get_contents(MG_SAOLUU_DIR.'admin/render.php');
 test('Setup trial SQL backup explicitly encrypted', str_contains($setup_actions, "'backup_setup_test', true, ['encrypt' => true, 'upload_drive' => false]"));
 test('Admin never advertises disabled PHP fallback', !str_contains($setup_ui, 'PHP dự phòng'));
+// UI contract: honest operation status and readable restore checkpoint.
+$ux_php = file_get_contents(MG_SAOLUU_DIR . 'admin/render.php');
+$ux_js = file_get_contents(MG_SAOLUU_DIR . 'assets/js/admin.js');
+test('UI prevents duplicate long-running submissions', str_contains($ux_js, 'mgslSubmitting') && str_contains($ux_js, 'mgsl-operation-pending'));
+test('UI warns before exceeding the PHP upload limit', str_contains($ux_php, 'data-mgsl-max-upload') && str_contains($ux_js, 'setCustomValidity'));
+test('UI reports linked checkpoint and cleanup result', str_contains($ux_php, 'checkpoint_sha') && str_contains($ux_php, 'rollback_file_cleanup'));
 // No real WordPress/DBngin/cPanel integration was performed by this mock harness.
 echo "TESTS ".$GLOBALS['test_count']."/".$GLOBALS['test_count']." PASS\n";

@@ -56,6 +56,22 @@ function mg_saoluu_is_encrypted_backup($path) {
     return $magic === 'MGSLENC1';
 }
 
+/**
+ * Write every byte, including when PHP produces a short fwrite().
+ * An injected writer is used only by the standalone failure regression.
+ */
+function mg_saoluu_write_all($handle, $bytes, $writer = null) {
+    $length = strlen((string) $bytes);
+    $offset = 0;
+    while ($offset < $length) {
+        $chunk = substr($bytes, $offset);
+        $count = $writer ? $writer($handle, $chunk) : @fwrite($handle, $chunk);
+        if (!is_int($count) || $count <= 0 || $count > strlen($chunk)) return false;
+        $offset += $count;
+    }
+    return true;
+}
+
 function mg_saoluu_encrypt_backup_file($source, $target, $password) {
     if (!mg_saoluu_crypto_available()) return new WP_Error('crypto_missing', 'Máy chủ chưa hỗ trợ AES-256-GCM. Không thể mã hóa bản sao.');
     if (!is_readable($source) || filesize($source) < 1) return new WP_Error('encrypt_source', 'File cần mã hóa không đọc được.');
@@ -88,13 +104,12 @@ function mg_saoluu_encrypt_backup_file($source, $target, $password) {
         return new WP_Error('encrypt_open', 'Không thể mở file để mã hóa.');
     }
     @chmod($target, 0600);
-    fwrite($out, 'MGSLENC1');
-    fwrite($out, pack('N', strlen($header_json)));
-    fwrite($out, $header_json);
+    $ok = mg_saoluu_write_all($out, 'MGSLENC1')
+        && mg_saoluu_write_all($out, pack('N', strlen($header_json)))
+        && mg_saoluu_write_all($out, $header_json);
     $header_hash = hash('sha256', $header_json, true);
     $index = 0;
-    $ok = true;
-    while (!feof($in)) {
+    while ($ok && !feof($in)) {
         $plain = fread($in, MG_SAOLUU_ENCRYPT_CHUNK);
         if ($plain === false) { $ok = false; break; }
         if ($plain === '') break;
@@ -103,16 +118,17 @@ function mg_saoluu_encrypt_backup_file($source, $target, $password) {
         $aad = 'MGSLENC1' . $header_hash . pack('N', $index);
         $cipher = openssl_encrypt($plain, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag, $aad, 16);
         if ($cipher === false || strlen($tag) !== 16) { $ok = false; break; }
-        fwrite($out, pack('N', strlen($cipher)));
-        fwrite($out, $iv);
-        fwrite($out, $tag);
-        fwrite($out, $cipher);
+        $ok = mg_saoluu_write_all($out, pack('N', strlen($cipher)))
+            && mg_saoluu_write_all($out, $iv)
+            && mg_saoluu_write_all($out, $tag)
+            && mg_saoluu_write_all($out, $cipher);
+        if (!$ok) break;
         $index++;
     }
     fclose($in);
-    fflush($out);
-    fclose($out);
-    if (!$ok || !is_file($target) || filesize($target) < 1) {
+    $flushed = @fflush($out);
+    $closed = @fclose($out);
+    if (!$ok || !$flushed || !$closed || !is_file($target) || filesize($target) < 1) {
         @unlink($target);
         return new WP_Error('encrypt_failed', 'Mã hóa file thất bại. File tạm đã được xóa.');
     }
@@ -164,13 +180,17 @@ function mg_saoluu_decrypt_backup_file($source, $target, $password) {
         $aad = 'MGSLENC1' . $header_hash . pack('N', $index);
         $plain = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag, $aad);
         if ($plain === false) { $error = 'Sai mật khẩu hoặc file mã hóa đã bị thay đổi.'; break; }
-        fwrite($out, $plain);
+        if (!mg_saoluu_write_all($out, $plain)) {
+            $error = 'Không ghi đủ file tạm sau giải mã (có thể đã hết dung lượng).';
+            break;
+        }
         $written += strlen($plain);
         $index++;
     }
     fclose($in);
-    fflush($out);
-    fclose($out);
+    $flushed = @fflush($out);
+    $closed = @fclose($out);
+    if ((!$flushed || !$closed) && !$error) $error = 'Không thể hoàn tất ghi file tạm sau giải mã.';
     $expected = (int) ($header['original_size'] ?? 0);
     if (!$error && $expected > 0 && $written !== $expected) $error = 'Dung lượng sau giải mã không khớp với bản gốc.';
     if ($error) {

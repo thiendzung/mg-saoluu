@@ -88,4 +88,61 @@
     window.addEventListener('popstate', function () {
         if (document.querySelector('[data-mgsl-tabs]')) loadTab(window.location.href, false);
     });
+
+    // Real feedback for synchronous POST requests; no invented percentages or polling.
+    var operations = {
+        backup: 'Đang sao lưu và kiểm tra…',
+        verify_backup: 'Đang xác minh…',
+        restore_saved: 'Đang khôi phục bản đang lưu…',
+        restore_zip_upload: 'Đang tải file lên và khôi phục…',
+        restore_sql_upload: 'Đang nhập SQL…'
+    };
+
+    document.addEventListener('change', function (event) {
+        var field = event.target.closest('input[type="file"][data-mgsl-max-upload]');
+        if (!field) return;
+        var limit = Number(field.getAttribute('data-mgsl-max-upload')) || 0;
+        var picked = field.files && field.files[0];
+        field.setCustomValidity(picked && limit && picked.size > limit
+            ? 'File vượt giới hạn upload. Hãy dùng bản đang lưu hoặc điều chỉnh PHP chỉ trên clone.'
+            : '');
+        if (field.validationMessage) field.reportValidity();
+    });
+
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || event.defaultPrevented) return;
+        var actionField = form.querySelector('input[name="mg_action"]');
+        var action = actionField && actionField.value;
+        if (!Object.prototype.hasOwnProperty.call(operations, action)) return;
+        if (!form.checkValidity()) return;
+        if (form.dataset.mgslSubmitting === '1') { event.preventDefault(); return; }
+        form.dataset.mgslSubmitting = '1';
+        var status = document.createElement('p');
+        status.className = 'mgsl-operation-pending';
+        status.setAttribute('role', 'status');
+        status.textContent = operations[action] + ' Vui lòng chờ máy chủ trả kết quả; không gửi lại.';
+        form.appendChild(status);
+        // One-off callback after native form submit, no status polling.
+        window.setTimeout(function () {
+            form.querySelectorAll('button').forEach(function (button) {
+                if (!button.disabled) {
+                    button.disabled = true;
+                    button.dataset.mgslTemporaryDisabled = '1';
+                }
+            });
+        }, 0);
+    });
+
+    window.addEventListener('pageshow', function () {
+        // Restore controls after browser back/forward cache (never unlock originally disabled buttons).
+        document.querySelectorAll('form[data-mgsl-submitting]').forEach(function (form) {
+            delete form.dataset.mgslSubmitting;
+            form.querySelectorAll('.mgsl-operation-pending').forEach(function (item) { item.remove(); });
+            form.querySelectorAll('[data-mgsl-temporary-disabled]').forEach(function (button) {
+                button.disabled = false;
+                delete button.dataset.mgslTemporaryDisabled;
+            });
+        });
+    });
 })();
