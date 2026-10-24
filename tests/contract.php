@@ -165,6 +165,13 @@ $maintenance_dir_error = mg_saoluu_maintenance(true);
 test('maintenance path directory fails closed',
     is_wp_error($maintenance_dir_error) && $maintenance_dir_error->get_error_code() === 'restore_destination_directory');
 rmdir(ABSPATH . '.maintenance');
+file_put_contents(ABSPATH . '.maintenance', 'existing-wordpress-updater-marker');
+$maintenance_existing_error = mg_saoluu_maintenance(true);
+test('existing WordPress maintenance marker is preserved',
+    is_wp_error($maintenance_existing_error)
+    && $maintenance_existing_error->get_error_code() === 'maintenance_already_active'
+    && file_get_contents(ABSPATH . '.maintenance') === 'existing-wordpress-updater-marker');
+@unlink(ABSPATH . '.maintenance');
 symlink($outside_sentinel, ABSPATH . '.maintenance');
 $maintenance_link_error = mg_saoluu_maintenance(true);
 test('maintenance symlink cannot overwrite outside sentinel',
