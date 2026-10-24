@@ -62,6 +62,7 @@ Create a deliberately measurable healthy baseline:
 - snapshot/hash baseline DB and relevant filesystem invariants.
 
 The baseline must pass the plugin restore health check. If the active theme is missing, do not repair it silently after the test begins; report the preflight block.
+Record the exact preflight error code if RC8 blocks before any database write; this is a PASS for fail-closed behavior, not a restore failure.
 
 ## Restore test
 
