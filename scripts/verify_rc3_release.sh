@@ -3,6 +3,15 @@
 # Run only from an isolated checkout. Does not touch WordPress or production.
 set -eu
 
+if [ "$#" -gt 1 ]; then
+  echo "Usage: sh scripts/verify_rc3_release.sh [absolute-output-zip]" >&2
+  exit 2
+fi
+if [ "$#" -eq 1 ] && { [ -e "$1" ] || [ -L "$1" ]; }; then
+  echo "Refusing to overwrite an existing output ZIP" >&2
+  exit 2
+fi
+
 ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/mgsl-rc3-verify.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -39,4 +48,12 @@ from pathlib import Path
 p = Path(sys.argv[1])
 print(hashlib.sha256(p.read_bytes()).hexdigest(), p.name)
 PY
+if [ "$#" -eq 1 ]; then
+  case "$1" in
+    /*) ;;
+    *) echo "Output ZIP must have an absolute path outside source" >&2; exit 2 ;;
+  esac
+  cp "$ZIP" "$1"
+  echo "Final verified archive saved: $1"
+fi
 echo "PASS: source, packaged payload, extracted integrity and contracts"
