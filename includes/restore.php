@@ -801,7 +801,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         $journal_saved = mg_saoluu_restore_journal($journal);
         if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
         mg_saoluu_debug_log('restore_database_imported',['target_env'=>$target_env]);
-        if ($change_url && $target_env !== 'production') {
+        if ($change_url && ($target_env !== 'production' || $migration_approval !== null)) {
             if ($source_home && untrailingslashit($source_home) !== untrailingslashit($target_home)) {
                 $replace_report = mg_saoluu_search_replace_database($source_home, $target_home);
                 if (is_wp_error($replace_report)) throw new RuntimeException($replace_report->get_error_message());
@@ -820,7 +820,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
             if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
         }
         wp_cache_flush();
-        $health = mg_saoluu_restore_health_check($target_env !== 'production' ? $target_home : '');
+        $health = mg_saoluu_restore_health_check(($target_env !== 'production' || $migration_approval !== null) ? $target_home : '');
         if (is_wp_error($health)) throw new RuntimeException($health->get_error_message());
         if ($rollback_restore) {
             $cleanup = mg_saoluu_remove_previous_restore_files($previous_journal);
