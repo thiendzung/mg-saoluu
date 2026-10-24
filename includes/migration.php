@@ -21,6 +21,9 @@ function mg_saoluu_migration_production_gate() {
     if (!mg_saoluu_request_host_is_canonical()) {
         return new WP_Error('migration_host_mismatch', 'Host request không khớp địa chỉ WordPress chuẩn.');
     }
+    if (!defined('DISABLE_WP_CRON') || DISABLE_WP_CRON !== true) {
+        return new WP_Error('migration_cron_active', 'Hãy tắt WP-Cron ở cấu hình đích và cách ly email, checkout, webhook trước khi nhập.');
+    }
     if (!function_exists('is_ssl') || !is_ssl()) {
         return new WP_Error('migration_https_required', 'Phải xác nhận HTTPS cho trang quản trị web thật trước khi chuyển site.');
     }
