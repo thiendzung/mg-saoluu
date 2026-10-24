@@ -348,6 +348,28 @@ function mg_saoluu_check_restore_confirmation($phrase, $confirmed) {
     return true;
 }
 
+/**
+ * Check both the work/archive volume and the destination WordPress volume.
+ * A shared device must satisfy the combined reserve. This is conservative,
+ * not a guarantee against a disk filling after preflight.
+ */
+function mg_saoluu_restore_space_budget($free_work, $free_site, $same_volume, $need_work, $need_site) {
+    if ($same_volume) {
+        $needed = $need_work + $need_site;
+        if ($free_work !== false && $free_work < $needed) {
+            return new WP_Error('restore_space', 'Không đủ dung lượng chung cho giải nén và ghi website. Cần ' . size_format($needed) . ', còn ' . size_format($free_work) . '.');
+        }
+        return true;
+    }
+    if ($free_work !== false && $free_work < $need_work) {
+        return new WP_Error('restore_space', 'Không đủ dung lượng thư mục tạm. Cần ' . size_format($need_work) . ', còn ' . size_format($free_work) . '.');
+    }
+    if ($free_site !== false && $free_site < $need_site) {
+        return new WP_Error('restore_target_space', 'Ổ chứa website đích không đủ dung lượng. Cần ' . size_format($need_site) . ', còn ' . size_format($free_site) . '.');
+    }
+    return true;
+}
+
 function mg_saoluu_restore_preflight($zip_file) {
     $zip = new ZipArchive();
     if ($zip->open($zip_file) !== true) return new WP_Error('zip_open_failed', 'Không thể mở ZIP để tính dung lượng.');
@@ -356,10 +378,17 @@ function mg_saoluu_restore_preflight($zip_file) {
     $zip->close();
     $private_temp = mg_saoluu_private_temp_dir();
     if (is_wp_error($private_temp)) return $private_temp;
-    $free = @disk_free_space($private_temp);
-    $required = max(300 * 1024 * 1024, (int) ($uncompressed * 1.15));
-    if ($free !== false && $free < $required) return new WP_Error('restore_space', 'Không đủ dung lượng tạm để khôi phục. Cần khoảng ' . size_format($required) . ', hiện còn ' . size_format($free) . '.');
-    return ['uncompressed' => $uncompressed, 'required' => $required];
+    $free_work = @disk_free_space($private_temp);
+    $free_site = @disk_free_space(ABSPATH);
+    $work_stat = @stat($private_temp);
+    $site_stat = @stat(ABSPATH);
+    $same_volume = is_array($work_stat) && is_array($site_stat)
+        && isset($work_stat['dev'], $site_stat['dev']) && $work_stat['dev'] === $site_stat['dev'];
+    $required_work = max(300 * 1024 * 1024, (int) ($uncompressed * 1.15));
+    $required_site = max(96 * 1024 * 1024, (int) ($uncompressed * 1.10));
+    $check = mg_saoluu_restore_space_budget($free_work, $free_site, $same_volume, $required_work, $required_site);
+    if (is_wp_error($check)) return $check;
+    return ['uncompressed' => $uncompressed, 'required' => $required_work, 'site_required' => $required_site];
 }
 
 function mg_saoluu_restore_health_check($expected_home = '') {
@@ -379,10 +408,48 @@ function mg_saoluu_restore_health_check($expected_home = '') {
 
 function mg_saoluu_restore_journal($data = null) {
     $file = mg_saoluu_get_backup_dir() . 'restore-journal.json';
-    if ($data === null) return file_exists($file) ? json_decode((string) file_get_contents($file), true) : [];
+    if ($data === null) {
+        if (!file_exists($file) && !is_link($file)) return [];
+        if (!is_file($file) || is_link($file)) return ['status' => 'journal_invalid'];
+        $json = @file_get_contents($file);
+        $loaded = is_string($json) ? json_decode($json, true) : null;
+        return is_array($loaded) && isset($loaded['status']) ? $loaded : ['status' => 'journal_invalid'];
+    }
+    $safe = mg_saoluu_storage_preflight();
+    if (is_wp_error($safe)) return $safe;
+    if (is_link($file) || (file_exists($file) && !is_file($file))) {
+        return new WP_Error('journal_write_failed', 'Nhật ký restore không phải file an toàn; đã dừng trước khi ghi database.');
+    }
     $data['updated_at'] = current_time('mysql');
-    file_put_contents($file, wp_json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+    $json = wp_json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    if (!is_string($json) || $json === '') return new WP_Error('journal_write_failed', 'Không mã hóa được nhật ký restore.');
+    // Atomic write: a disk-full failure must never truncate the previous journal.
+    $temp = $file . '.' . wp_generate_password(16, false, false) . '.tmp';
+    $handle = @fopen($temp, 'xb');
+    if (!$handle) return new WP_Error('journal_write_failed', 'Không tạo được nhật ký restore tạm.');
+    @chmod($temp, 0600);
+    $length = strlen($json);
+    $offset = 0;
+    while ($offset < $length) {
+        $count = @fwrite($handle, substr($json, $offset));
+        if (!is_int($count) || $count <= 0) break;
+        $offset += $count;
+    }
+    $flushed = @fflush($handle);
+    $closed = @fclose($handle);
+    if ($offset !== $length || !$flushed || !$closed || !@rename($temp, $file)) {
+        @unlink($temp);
+        return new WP_Error('journal_write_failed', 'Không ghi đủ nhật ký restore; đã dừng an toàn.');
+    }
     return $data;
+}
+
+/** Unknown, interrupted and rollback-failed transactions must not be overwritten. */
+function mg_saoluu_restore_journal_unfinished($journal) {
+    return is_array($journal) && in_array((string) ($journal['status'] ?? ''), [
+        'journal_invalid', 'running', 'database_imported', 'files_copied',
+        'rolling_back', 'rollback_failed', 'maintenance_cleanup_failed'
+    ], true);
 }
 
 function mg_saoluu_restore_destination_check($relative) {
@@ -583,6 +650,9 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
         return new WP_Error('rc_production_restore_disabled', 'Bản RC chỉ được restore trên clone. Dùng Recovery Runbook độc lập khi cần cứu site production.');
     }
+    if (mg_saoluu_restore_journal_unfinished(mg_saoluu_restore_journal())) {
+        return new WP_Error('restore_unfinished', 'Phát hiện lần restore trước chưa hoàn tất. Không ghi tiếp database; kiểm tra checkpoint và Recovery Runbook.');
+    }
     $safe = mg_saoluu_storage_preflight();
     if (is_wp_error($safe)) return $safe;
     $prepared = mg_saoluu_prepare_backup_file($backup_file, $password);
@@ -660,7 +730,12 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     $source_home = (string) ($manifest['source_url'] ?? '');
     $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
     $journal = ['status' => 'running', 'source' => basename($backup_file), 'pre_backup' => $pre, 'pre_backup_sha256' => strtolower($pre_hash), 'restore_files' => (bool) $restore_files, 'new_file_count' => count($new_files), 'new_files' => $new_files, 'started_at' => current_time('mysql')];
-    mg_saoluu_restore_journal($journal);
+    $journal_saved = mg_saoluu_restore_journal($journal);
+    if (is_wp_error($journal_saved)) {
+        mg_saoluu_remove_tree($stage);
+        if ($prepared['temporary']) @unlink($zip_file);
+        return $journal_saved;
+    }
     mg_saoluu_debug_log('restore_started',['type'=>$type,'source_env'=>$source_env,'target_env'=>$target_env,'restore_files'=>$restore_files]);
     $maintenance = mg_saoluu_maintenance(true);
     if (is_wp_error($maintenance)) {
@@ -676,7 +751,10 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     try {
         $import = mg_saoluu_run_mysql_import($stage . 'database_backup.sql');
         if (is_wp_error($import)) throw new RuntimeException($import->get_error_message());
-        $journal['status'] = 'database_imported'; mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_database_imported',['target_env'=>$target_env]);
+        $journal['status'] = 'database_imported';
+        $journal_saved = mg_saoluu_restore_journal($journal);
+        if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
+        mg_saoluu_debug_log('restore_database_imported',['target_env'=>$target_env]);
         if ($change_url && $target_env !== 'production') {
             if ($source_home && untrailingslashit($source_home) !== untrailingslashit($target_home)) {
                 $replace_report = mg_saoluu_search_replace_database($source_home, $target_home);
@@ -691,7 +769,9 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         if ($restore_files) {
             $copy = mg_saoluu_copy_stage_files($stage, $type);
             if (is_wp_error($copy)) throw new RuntimeException($copy->get_error_message());
-            $journal['status'] = 'files_copied'; mg_saoluu_restore_journal($journal);
+            $journal['status'] = 'files_copied';
+            $journal_saved = mg_saoluu_restore_journal($journal);
+            if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
         }
         wp_cache_flush();
         $health = mg_saoluu_restore_health_check($target_env !== 'production' ? $target_home : '');
@@ -702,7 +782,11 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
             $journal['rollback_removed_new_file_count'] = $cleanup['removed'];
             if ($cleanup['failed'] > 0) throw new RuntimeException('Không thể hoàn tất dọn file của bản quay lại.');
         }
-        $journal['status'] = 'completed'; $journal['completed_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_complete',['type'=>$type]);
+        $journal['status'] = 'completed';
+        $journal['completed_at'] = current_time('mysql');
+        $journal_saved = mg_saoluu_restore_journal($journal);
+        if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
+        mg_saoluu_debug_log('restore_complete',['type'=>$type]);
     } catch (Throwable $e) {
         $error = new WP_Error('restore_failed', $e->getMessage());
         $journal['status'] = 'rolling_back'; $journal['error'] = sanitize_text_field($e->getMessage()); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_rollback_started',['type'=>$type]);
@@ -719,8 +803,11 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
                 mg_saoluu_restore_journal($journal);
                 $error = new WP_Error('rollback_failed', 'Khôi phục lỗi; database đã quay lại nhưng không thể dọn hết file phát sinh. Bản dự phòng: ' . $pre);
             } else {
-            $journal['status'] = 'rolled_back'; $journal['rolled_back_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal);
-            $error = new WP_Error('restore_rolled_back', 'Khôi phục không thành công nên plugin đã tự quay lại trạng thái trước đó. Lỗi ban đầu: ' . $e->getMessage());
+            $journal['status'] = 'rolled_back'; $journal['rolled_back_at'] = current_time('mysql');
+            $rollback_record = mg_saoluu_restore_journal($journal);
+            $error = is_wp_error($rollback_record)
+                ? new WP_Error('rollback_journal_failed', 'Đã quay lại dữ liệu nhưng không ghi được nhật ký; phải kiểm tra thủ công.')
+                : new WP_Error('restore_rolled_back', 'Khôi phục không thành công nên plugin đã tự quay lại trạng thái trước đó. Lỗi ban đầu: ' . $e->getMessage());
             mg_saoluu_log_event('restore_rolled_back', $e->getMessage(), ['pre_backup' => $pre]);
             }
         }
@@ -783,6 +870,9 @@ function mg_saoluu_secure_download() {
 function mg_saoluu_restore_raw_sql($sql_file, $source_url = '', $change_url = true) {
     if (mg_saoluu_environment() === 'production') {
         return new WP_Error('raw_sql_production_disabled', 'Không nhập SQL riêng lên production qua plugin.');
+    }
+    if (mg_saoluu_restore_journal_unfinished(mg_saoluu_restore_journal())) {
+        return new WP_Error('restore_unfinished', 'Nhật ký restore chưa hoàn tất; không nhập SQL khác cho đến khi kiểm tra checkpoint.');
     }
     $safe = mg_saoluu_storage_preflight();
     if (is_wp_error($safe)) return $safe;
