@@ -1,5 +1,5 @@
 <?php
-/** Standalone narrow regression harness for MG Sao Luu 1.2.1, no WordPress or live database. */
+/** Standalone narrow regression harness for MG Sao Luu 1.3.0-rc3, no WordPress or live database. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 $root = sys_get_temp_dir() . '/mgsl-v12-' . bin2hex(random_bytes(4));
 mkdir($root . '/public_html/wp-content', 0700, true);
@@ -61,7 +61,7 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.2.1');
+define('MG_SAOLUU_VERSION', '1.3.0-rc3');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
@@ -91,20 +91,20 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('stable version constant promoted', MG_SAOLUU_VERSION === '1.2.1');
+test('RC3 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc3');
 
 // Stable production restore still requires the signed temporary unlock plus the
 // explicit confirmation phrase. Version promotion must not bypass this gate.
 $GLOBALS['test_environment']='production';
 $GLOBALS['test_restore_unlock']=[];
 $prod_locked=mg_saoluu_check_restore_confirmation('RESTORE MOTGU.COM', true);
-test('stable production restore remains locked without signed unlock',
+test('production restore confirmation remains locked without signed unlock',
     is_wp_error($prod_locked) && $prod_locked->get_error_code()==='production_locked');
 $GLOBALS['test_restore_unlock']=['active'=>true,'expires_at'=>time()+600];
 $prod_phrase=mg_saoluu_check_restore_confirmation('WRONG PHRASE', true);
-test('stable production restore rejects wrong confirmation phrase even when unlocked',
+test('production restore confirmation rejects wrong phrase even when unlocked',
     is_wp_error($prod_phrase) && $prod_phrase->get_error_code()==='confirm_failed');
-test('stable production restore confirmation passes only with active unlock and exact phrase',
+test('production confirmation layer still requires active unlock and exact phrase',
     mg_saoluu_check_restore_confirmation('RESTORE MOTGU.COM', true)===true);
 $GLOBALS['test_restore_unlock']=[];
 $GLOBALS['test_environment']='local';
@@ -532,7 +532,7 @@ $unknown=mg_saoluu_backup_prefix_preflight([],'wp_',true);
 test('legacy cross-site unknown prefix blocked',is_wp_error($unknown)&&$unknown->get_error_code()==='backup_prefix_unknown');
 test('legacy same-site prefix still allowed',mg_saoluu_backup_prefix_preflight([],'wp_',false)===true);
 
-// v1.2.1: backend safety and honest archive statuses.
+// Stable backend safety and honest archive statuses retained in RC3.
 test('catalog requires actual restore-drill proof', !mg_saoluu_catalog_has_recovery_proof([
  'type'=>'safe_full','integrity_status'=>'verified','restore_tested'=>false
 ]));
@@ -578,11 +578,23 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// Stable release intentionally removes the RC-only hard block. Production restore
-// remains protected by signed unlock + password/host/phrase gates tested above
-// and by source host/signature checks in the restore engine.
-test('stable admin actions no longer advertise RC hard block',
-    !str_contains(MG_SAOLUU_VERSION, '-rc'));
+// RC3 must reject stale/direct approval and migration mutation POSTs even with
+// valid admin permissions/nonce. Production writing stays hard-blocked in RC.
+foreach (['security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval'] as $blocked_action) {
+    $_POST = ['mg_action' => $blocked_action, 'mg_nonce' => 'fixture'];
+    $rc_message = ''; $rc_status = '';
+    mg_saoluu_handle_actions($rc_message, $rc_status);
+    test('RC prevents approval POST: ' . $blocked_action,
+        $rc_status === 'error' && str_contains($rc_message, 'Bản RC'));
+}
+foreach (['migration_stage', 'migration_apply'] as $migration_action) {
+    $_POST = ['mg_action' => $migration_action, 'mg_nonce' => 'fixture'];
+    $blocked_message = ''; $blocked_status = '';
+    mg_saoluu_handle_actions($blocked_message, $blocked_status);
+    test('RC prevents production migration POST: ' . $migration_action,
+        $blocked_status === 'error' && $blocked_message !== '');
+}
+$_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 
 // WordPress-independent AES-GCM decryption: binary roundtrip + wrong-key block.
