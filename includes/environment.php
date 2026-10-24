@@ -46,7 +46,12 @@ function mg_saoluu_auto_environment() {
             && !str_ends_with($h, '.local') && !str_ends_with($h, '.localhost')) return 'production';
         return 'local';
     }
-    if ($declared_env === 'staging') return 'staging';
+    if ($declared_env === 'staging') {
+        // A live public host must never become staging solely from a config flag.
+        $h = mg_saoluu_host();
+        return preg_match('/(^|[.\\-])(staging|stage|dev|demo|sandbox|test)([.\\-]|$)/i', $h)
+            ? 'staging' : 'production';
+    }
     if ($declared_env === 'production') return 'production';
 
     $host = mg_saoluu_host();
@@ -70,7 +75,7 @@ function mg_saoluu_environment() {
     if (!mg_saoluu_request_host_is_canonical()) return 'production';
     $manual = get_option('mg_saoluu_environment', 'auto');
     $auto = mg_saoluu_auto_environment();
-    if ($manual === 'local' && $auto === 'production') return 'production';
+    if ($auto === 'production' && in_array($manual, ['local', 'staging'], true)) return 'production';
     if (!in_array($manual, ['local', 'staging', 'production'], true)) return $auto;
     if ($auto === 'production' && in_array($manual, ['local', 'staging'], true)) {
         $verified_host = strtolower((string) get_option('mg_saoluu_environment_verified_host', ''));
