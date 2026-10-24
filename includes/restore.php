@@ -666,6 +666,24 @@ function mg_saoluu_backup_prefix_preflight($manifest, $target_prefix, $cross_sit
     return true;
 }
 
+/**
+ * Build canonical URL replacements. Longest source first so a WordPress core
+ * subdirectory (site_url) is not swallowed by the shorter home_url rewrite.
+ */
+function mg_saoluu_restore_url_pairs($source_home, $source_site, $target_home, $target_site) {
+    $raw = [
+        [untrailingslashit((string) $source_site), untrailingslashit((string) $target_site)],
+        [untrailingslashit((string) $source_home), untrailingslashit((string) $target_home)],
+    ];
+    $pairs = [];
+    foreach ($raw as [$old, $new]) {
+        if ($old === '' || $new === '' || $old === $new) continue;
+        $pairs[$old] = $new;
+    }
+    uksort($pairs, static function ($a, $b) { return strlen($b) <=> strlen($a); });
+    return $pairs;
+}
+
 /** Permit domain rewrite on production only with a verified signed migration grant. */
 function mg_saoluu_restore_should_change_url($enabled, $target_env, $migration_approval = null) {
     return (bool) $enabled && ($target_env !== 'production' || $migration_approval !== null);
@@ -825,13 +843,12 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
         mg_saoluu_debug_log('restore_database_imported',['target_env'=>$target_env]);
         if (mg_saoluu_restore_should_change_url($change_url, $target_env, $migration_approval)) {
-            if ($source_home && untrailingslashit($source_home) !== untrailingslashit($target_home)) {
-                $replace_report = mg_saoluu_search_replace_database($source_home, $target_home);
-                if (is_wp_error($replace_report)) throw new RuntimeException($replace_report->get_error_message());
-            }
-            if ($source_site && untrailingslashit($source_site) !== untrailingslashit($target_site) && untrailingslashit($source_site) !== untrailingslashit($source_home)) {
-                $site_report = mg_saoluu_search_replace_database($source_site, $target_site);
-                if (is_wp_error($site_report)) throw new RuntimeException($site_report->get_error_message());
+            $url_pairs = mg_saoluu_restore_url_pairs($source_home, $source_site, $target_home, $target_site);
+            foreach ($url_pairs as $old_url => $new_url) {
+                $pair_report = mg_saoluu_search_replace_database($old_url, $new_url);
+                if (is_wp_error($pair_report)) throw new RuntimeException($pair_report->get_error_message());
+                $replace_report['tables'] += (int) ($pair_report['tables'] ?? 0);
+                $replace_report['rows'] += (int) ($pair_report['rows'] ?? 0);
             }
             update_option('home', untrailingslashit($target_home)); update_option('siteurl', untrailingslashit($target_site));
         }
