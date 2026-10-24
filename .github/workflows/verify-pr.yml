@@ -20,7 +20,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: zip, openssl
+          extensions: zip, openssl, sodium
           coverage: none
       - name: JavaScript syntax
         run: node --check assets/js/admin.js
