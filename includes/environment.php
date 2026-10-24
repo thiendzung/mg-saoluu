@@ -1,11 +1,31 @@
 <?php
 if (!defined('ABSPATH')) { exit; }
+/**
+ * Canonical WordPress site host, NOT the client-supplied HTTP Host header.
+ * Security approvals, restore package binding and environment gates use this.
+ */
 function mg_saoluu_host() {
-    $host = isset($_SERVER['HTTP_HOST']) ? strtolower((string) $_SERVER['HTTP_HOST']) : '';
-    return preg_replace('/:\d+$/', '', $host);
+    $canonical = function_exists('home_url') ? (string) home_url('/') : '';
+    $host = wp_parse_url($canonical, PHP_URL_HOST);
+    if (!is_string($host) || $host === '') return '';
+    return strtolower(rtrim($host, '.'));
+}
+
+/** A wrong Host header can never make a production website look like Local. */
+function mg_saoluu_request_host_is_canonical() {
+    if (PHP_SAPI === 'cli' || empty($_SERVER['HTTP_HOST'])) return true;
+    $request = strtolower(trim((string) $_SERVER['HTTP_HOST']));
+    // A Host header must be one DNS name (optionally with port), no path or credentials.
+    if (strlen($request) > 253 || preg_match('/[\\\\\/\\s@]/', $request)) return false;
+    $request_host = wp_parse_url('http://' . $request, PHP_URL_HOST);
+    $canonical = mg_saoluu_host();
+    return is_string($request_host) && $canonical !== ''
+        && hash_equals($canonical, strtolower(rtrim($request_host, '.')));
 }
 
 function mg_saoluu_auto_environment() {
+    // A missing canonical URL or a mismatched Host is never proof of Local/Staging.
+    if (mg_saoluu_host() === '' || !mg_saoluu_request_host_is_canonical()) return 'production';
     // Chỉ tin WP_ENVIRONMENT_TYPE khi người quản trị đã khai báo rõ.
     // wp_get_environment_type() mặc định trả về "production" ngay cả trên tên miền .test,
     // vì vậy không được dùng giá trị mặc định đó trước khi kiểm tra tên miền local.
