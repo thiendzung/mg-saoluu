@@ -511,7 +511,7 @@ function mg_saoluu_remove_previous_restore_files($journal) {
     return mg_saoluu_remove_new_restore_files($files);
 }
 
-/** Resolve only the exact, current full-restore checkpoint; fail closed for stale or uploaded copies. */
+/** Resolve only the exact, current full-restore checkpoint; accept an exact uploaded copy by SHA. */
 function mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore_files) {
     if (!$restore_files) return ['rollback' => false, 'journal' => []];
     $name = basename((string) $backup_file);
@@ -524,16 +524,17 @@ function mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore
     $expected_hash = strtolower((string) ($journal['pre_backup_sha256'] ?? ''));
     $actual_path = realpath($backup_file);
     $trusted_path = $expected !== '' ? realpath(trailingslashit(mg_saoluu_get_backup_dir()) . $expected) : false;
-    $actual_hash = $trusted_path !== false ? @hash_file('sha256', $trusted_path) : false;
+    $trusted_hash = $trusted_path !== false ? @hash_file('sha256', $trusted_path) : false;
+    $actual_hash = $actual_path !== false && is_file($actual_path) && !is_link($backup_file) ? @hash_file('sha256', $actual_path) : false;
     $matches = ($journal['status'] ?? '') === 'completed'
         && !empty($journal['restore_files'])
         && is_array($journal['new_files'] ?? null)
         && $expected !== ''
         && preg_match('/^[a-f0-9]{64}$/', $expected_hash) === 1
-        && $name === $expected
         && $actual_path !== false
         && $trusted_path !== false
-        && wp_normalize_path($actual_path) === wp_normalize_path($trusted_path)
+        && is_string($trusted_hash)
+        && hash_equals($expected_hash, strtolower($trusted_hash))
         && is_string($actual_hash)
         && hash_equals($expected_hash, strtolower($actual_hash));
     if (!$matches) {
