@@ -240,6 +240,23 @@ function mg_saoluu_render_page() {
                 <div class="mgsl-card"><h2 class="mgsl-title">Thử khôi phục</h2><strong><?php echo $restore_proven ? esc_html((string)$restore_proven . ' bản có bằng chứng') : 'Chưa có bằng chứng'; ?></strong><p class="mgsl-small">Cần một lần restore end-to-end trên WordPress/DB độc lập.</p></div>
             </section>
             <section class="mgsl-grid"><div class="mgsl-card"><div class="mgsl-muted">Bản đang lưu</div><div class="mgsl-kpi"><?php echo count($files); ?></div><div><?php echo esc_html(size_format($total_size)); ?></div></div><div class="mgsl-card"><div class="mgsl-muted">Bản gần nhất</div><div class="mgsl-kpi" style="font-size:18px"><?php echo $latest ? esc_html(wp_date('H:i d/m/Y', filemtime($latest))) : 'Chưa có'; ?></div><div><?php echo $latest ? esc_html(basename($latest)) : 'Nên tạo bản database đầu tiên'; ?></div></div><div class="mgsl-card"><div class="mgsl-muted">Lịch tự động</div><div class="mgsl-kpi" style="font-size:18px"><?php echo get_option('mg_saoluu_auto_sql','0')==='1' || get_option('mg_saoluu_auto_full','0')==='1' ? 'Đã bật' : 'Đang tắt'; ?></div><div>Database hằng ngày · Toàn bộ hằng tuần</div></div></section>
+            <section class="mgsl-card"><h2 class="mgsl-title">Sức khỏe sao lưu tự động</h2>
+                <p class="mgsl-small">Chỉ hiển thị lần chạy thực tế. Lịch đã bật không có nghĩa backup đã thành công. Không tự chạy lại khi mở trang này.</p>
+                <?php foreach (['sql' => 'Database hằng ngày', 'safe_full' => 'Website hằng tuần'] as $health_type => $health_title): $health = mg_saoluu_schedule_health_report($health_type); ?>
+                <div class="mgsl-check">
+                    <span><?php echo esc_html($health_title); ?></span>
+                    <span class="<?php echo $health['ok'] ? 'mgsl-green' : 'mgsl-orange'; ?>"><?php echo esc_html($health['label']); ?></span>
+                </div>
+                <?php if ($health['enabled']): ?>
+                <p class="mgsl-small">
+                    Backup host thành công: <?php echo $health['last_local_success_at'] ? esc_html(wp_date('H:i d/m/Y', $health['last_local_success_at'])) : 'chưa có'; ?>
+                    · Lần thử: <?php echo $health['last_attempt_at'] ? esc_html(wp_date('H:i d/m/Y', $health['last_attempt_at'])) : 'chưa có'; ?>
+                    · Lịch kế tiếp: <?php echo $health['next_at'] ? esc_html(wp_date('H:i d/m/Y', $health['next_at'])) : 'không tìm thấy'; ?>
+                    <?php if ($health['last_code']): ?> · Mã lỗi: <?php echo esc_html($health['last_code']); ?><?php endif; ?>
+                </p>
+                <?php endif; endforeach; ?>
+                <p class="mgsl-small">Drive đã upload chưa đồng nghĩa có thể khôi phục. Cần kiểm tra file tải lại trên clone độc lập.</p>
+            </section>
             <section class="mgsl-grid-2"><div class="mgsl-card"><h2 class="mgsl-title">Quy trình làm việc</h2><p><strong>Backup:</strong> Database + files → checksum/chữ ký → offsite.</p><p><strong>Restore:</strong> Thử trên bản sao WordPress/DB độc lập trước khi phục hồi production.</p><div class="mgsl-note mgsl-warning">Có ZIP không có nghĩa là đã thử restore. Backup full không chứa wp-config.php hoặc bí mật hosting; cần Recovery Kit riêng.</div></div><div class="mgsl-card"><h2 class="mgsl-title">Tình trạng an toàn</h2><?php foreach ($checks as $check): ?><div class="mgsl-check"><span><?php echo esc_html($check['label']); ?></span><span class="<?php echo $check['ok'] ? 'mgsl-green' : 'mgsl-orange'; ?>"><?php echo esc_html($check['detail']); ?></span></div><?php endforeach; ?></div></section>
             <?php if ($backup_inside_web): ?><div class="mgsl-card mgsl-note mgsl-warning"><strong>Bản sao đang nằm trong website.</strong> Hãy tải bản quan trọng về Mac hoặc nơi lưu riêng.</div><?php endif; ?>
 
