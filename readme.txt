@@ -3,12 +3,10 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.2.1
+Stable tag: 1.3.0-rc3
 License: GPLv2 or later
 
-MG Sao Luu v1.2.1: Backup, Verify, Store, Restore co kiem soat va rollback.
-
-== Description ==
+MG Sao Luu v1.3.0-rc3: pre-release giu nguyen Backup/Restore da nghiem thu va them signed Local -> fresh Production migration QA.n ==
 
 Backup WordPress database + files, private storage, encrypted archive, separate retention,
 SHA-256 verification, Google Drive upload, protected restore and recovery runbook.
@@ -27,7 +25,7 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 4. Test encrypted database/full backup, verify catalog and restore on a separate clone.
 5. Keep hosting JetBackup + offsite independently. Production only after separate acceptance.
 
-== Changelog ==
+== Changelog ==\n\n= 1.3.0-rc3 =\n* Rebase signed Local -> fresh Production migration on the v1.2.1 Stable Backup/Restore hardening.\n* RC remains hard-blocked on real Production; mutation is available only on explicitly isolated Staging QA.\n* Canonical-host, fresh-target, HPOS/order, DB-prefix, Ed25519 one-time grant and URL/GUID safety gates retained.\n* Backup-tab migration picker uses metadata catalog only instead of scanning all archives.\n
 
 = 1.2.1 =
 * Stable Backup/Restore release after isolated-clone runtime acceptance through RC9.
