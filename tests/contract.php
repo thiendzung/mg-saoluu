@@ -57,13 +57,14 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.2.1-rc6');
+define('MG_SAOLUU_VERSION', '1.3.0-rc3');
 function add_action(){}
 function mg_saoluu_environment(){return 'local';}
 function mg_saoluu_is_local_environment(){return true;}
 require_once $base.'core.php';
 require_once $base.'diagnostics.php';
 require_once $base.'crypto.php';
+require_once $base.'migration.php';
 require_once $base.'google-drive.php';
 require_once $base.'catalog.php';
 require_once $base.'backup.php';
@@ -81,6 +82,30 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
+
+// Regression: the Overview diagnostic card cannot reuse RC4's unversioned status after RC6 upgrade.
+function register_activation_hook($file, $callback) {}
+function register_deactivation_hook($file, $callback) {}
+function add_filter($hook, $callback) {}
+define('MG_SAOLUU_FILE', MG_SAOLUU_DIR . 'mg-saoluu.php');
+require_once $base . 'lifecycle.php';
+$legacy_cache = ['plugin_integrity' => ['ok' => true, 'detail' => 'Đầy đủ · v1.2.1-rc4']];
+set_transient('mg_saoluu_system_checks', $legacy_cache, 120);
+$versioned_cache_key = mg_saoluu_system_checks_cache_key();
+test('system status uses a version-scoped cache key',
+    $versioned_cache_key !== 'mg_saoluu_system_checks'
+    && str_contains($versioned_cache_key, str_replace(['.', '-'], '_', MG_SAOLUU_VERSION))
+    && get_transient($versioned_cache_key) === false);
+$lifecycle_source = file_get_contents(MG_SAOLUU_DIR . 'includes/lifecycle.php');
+test('Overview uses only the versioned status cache',
+    str_contains($lifecycle_source, 'get_transient($cache_key)')
+    && str_contains($lifecycle_source, 'set_transient($cache_key, $checks'));
+set_transient($versioned_cache_key, $legacy_cache, 120);
+mg_saoluu_clear_runtime_cache();
+test('cache invalidation removes legacy and active version entries',
+    get_transient('mg_saoluu_system_checks') === false
+    && get_transient($versioned_cache_key) === false);
+
 
 // Storage isolation: multiple filesystem paths including symlinks.
 $external=mg_saoluu_get_backup_dir();
@@ -137,6 +162,28 @@ file_put_contents($restore_stage . '/wp-content/uploads/ordinary.txt', 'ordinary
 $ordinary_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
 test('ordinary restore destination passes', $ordinary_copy === true && file_get_contents($restore_target_dir . '/ordinary.txt') === 'ordinary-content');
 @unlink($restore_target_dir . '/ordinary.txt');
+
+$stage_plugin_dir = $restore_stage . '/wp-content/plugins/mg-saoluu';
+$target_plugin_dir = ABSPATH . 'wp-content/plugins/mg-saoluu';
+wp_mkdir_p($stage_plugin_dir); wp_mkdir_p($target_plugin_dir);
+file_put_contents($stage_plugin_dir . '/migration-source-only.php', 'SOURCE-PLUGIN');
+file_put_contents($target_plugin_dir . '/migration-source-only.php', 'TARGET-PLUGIN');
+file_put_contents($restore_stage . '/wp-content/uploads/migration-new.txt', 'MIGRATION-NEW');
+$migration_new = mg_saoluu_stage_new_files($restore_stage, true);
+test('migration rollback inventory excludes MG Sao Luu plugin files',
+    is_array($migration_new)
+    && in_array('wp-content/uploads/migration-new.txt', $migration_new, true)
+    && !in_array('wp-content/plugins/mg-saoluu/migration-source-only.php', $migration_new, true));
+$migration_copy = mg_saoluu_copy_stage_files($restore_stage, 'local_copy', true);
+test('migration never overwrites running MG Sao Luu plugin',
+    $migration_copy === true
+    && file_get_contents($target_plugin_dir . '/migration-source-only.php') === 'TARGET-PLUGIN'
+    && file_get_contents($restore_target_dir . '/migration-new.txt') === 'MIGRATION-NEW');
+@unlink($restore_target_dir . '/migration-new.txt');
+@unlink($stage_plugin_dir . '/migration-source-only.php');
+@rmdir($stage_plugin_dir);
+@unlink($target_plugin_dir . '/migration-source-only.php');
+@rmdir($target_plugin_dir);
 
 $leaf_link = $restore_target_dir . '/leaf-link.txt';
 file_put_contents($restore_stage . '/wp-content/uploads/leaf-link.txt', 'must-not-follow-leaf-link');
@@ -450,6 +497,14 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  $_POST=['mg_action'=>$legacy];$message='';$status='';
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
+}
+// RC production-import actions must remain closed, including direct forged requests.
+foreach (['migration_stage', 'migration_apply'] as $migration_action) {
+    $_POST = ['mg_action' => $migration_action, 'mg_nonce' => 'fixture'];
+    $blocked_msg = ''; $blocked_status = '';
+    mg_saoluu_handle_actions($blocked_msg, $blocked_status);
+    test('RC refuses production migration POST: ' . $migration_action,
+        $blocked_status === 'error' && $blocked_msg !== '');
 }
 // RC must reject stale/direct approval POST even with valid admin permissions and nonce.
 foreach (['security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval'] as $blocked_action) {

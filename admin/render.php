@@ -141,7 +141,7 @@ function mg_saoluu_render_page() {
         $backup_dir = mg_saoluu_get_backup_dir();
         $backup_inside_web = !mg_saoluu_storage_path_safe($backup_dir) || is_wp_error(mg_saoluu_storage_preflight());
     }
-    if (in_array($active, ['overview', 'restore', 'backups'], true)) {
+    if (in_array($active, ['overview', 'restore', 'backups', 'backup'], true)) {
         $files = mg_saoluu_list_backup_files();
         $latest = $files ? $files[0] : '';
     }
@@ -167,6 +167,8 @@ function mg_saoluu_render_page() {
         $security_output = mg_saoluu_security_output_get();
         $trusted_signers = mg_saoluu_security_trusted_signers();
         $security_device = mg_saoluu_security_device();
+    } elseif ($active === 'backup' && $env === 'local') {
+        $security_output = mg_saoluu_security_output_get();
     } elseif ($active === 'restore') {
         $security_output = mg_saoluu_security_output_get();
         $trusted_signers = mg_saoluu_security_trusted_signers();
@@ -251,6 +253,33 @@ function mg_saoluu_render_page() {
             </section>
             <section class="mgsl-card"><h2>Gói Host → Local (chỉ cho clone)</h2><p>Tạo file mã hóa gồm database, themes, plugins và uploads. Giữ Recovery Key riêng; không thay thế motgu.test đang phát triển.</p>
             <form method="post"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="backup"><input type="hidden" name="backup_type" value="local_copy"><input type="hidden" name="encrypt_backup" value="1"><input type="hidden" name="return_tab" value="backup"><button class="button button-primary">Tạo gói Host → Local mã hóa</button></form></section>
+            <?php if ($env === 'local'): ?>
+            <section class="mgsl-card">
+                <h2 class="mgsl-title">Chuyển Local → Website mới</h2>
+                <p>Tạo gói mã hóa DB + theme/plugin/uploads, ký đúng SHA-256 và domain đích. Chỉ chuyển vào WordPress <strong>mới, chưa có dữ liệu/đơn hàng</strong>.</p>
+                <form method="post"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
+                    <input type="hidden" name="mg_action" value="backup"><input type="hidden" name="backup_type" value="local_copy">
+                    <input type="hidden" name="migration_mode" value="1"><input type="hidden" name="encrypt_backup" value="1">
+                    <input type="hidden" name="return_tab" value="backup">
+                    <button class="button button-primary">1. Tạo gói chuyển Local mã hóa</button>
+                </form>
+                <form method="post" style="margin-top:16px"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
+                    <input type="hidden" name="mg_action" value="migration_sign"><input type="hidden" name="return_tab" value="backup">
+                    <div class="mgsl-form-row two"><div class="mgsl-field"><label>Gói vừa tạo</label><select name="file_name" required>
+                    <?php foreach ($files as $file): if (substr($file, -9) !== '.mgbackup') continue; ?>
+                        <option value="<?php echo esc_attr(basename($file)); ?>"><?php echo esc_html(basename($file)); ?></option>
+                    <?php endforeach; ?></select></div><div class="mgsl-field"><label>Domain web thật mới (HTTPS)</label>
+                    <input type="url" name="target_url" placeholder="https://example.com" required></div></div>
+                    <p><label>Recovery Key nếu khác khóa máy Local <input type="password" name="backup_password" autocomplete="off"></label></p>
+                    <button class="button">2. Tạo mã ký (10 phút, dùng một lần)</button>
+                </form>
+                <?php if (($security_output['type'] ?? '') === 'migration_approval'): ?>
+                    <div class="mgsl-code-output"><label>Mã ký gắn với file và domain đích</label>
+                    <textarea rows="6" readonly><?php echo esc_textarea($security_output['value'] ?? ''); ?></textarea></div>
+                <?php endif; ?>
+                <p class="mgsl-small">Ghép nối khóa công khai Local ở web đích trước; giữ Recovery Key ngoài website.</p>
+            </section>
+            <?php endif; ?>
             <div class="mgsl-card mgsl-note">Muốn thử khôi phục dữ liệu production trên Mac, hãy dùng bản sao WordPress/DBngin độc lập và Recovery Kit. Không restore đè motgu.test đang phát triển.</div>
 
         <?php elseif ($active === 'restore'): ?>
@@ -306,6 +335,37 @@ function mg_saoluu_render_page() {
                         <form method="post"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="security_lock_restore"><input type="hidden" name="return_tab" value="restore"><button class="button">Khóa lại ngay</button></form>
                     <?php endif; ?>
                 </section>
+            <?php endif; ?>
+            <?php if ($env === 'production' || ($env === 'staging' && defined('MG_SAOLUU_MIGRATION_QA_MODE') && MG_SAOLUU_MIGRATION_QA_MODE === true)): ?>
+            <section class="mgsl-card">
+                <h2 class="mgsl-title">Chuyển Local → Website mới (Production / Staging QA)</h2>
+                <p>Chỉ WordPress mới chưa có dữ liệu hoặc đơn hàng. Bản RC khóa ghi production; bản stable yêu cầu HTTPS, opt-in riêng trên hosting, khóa Local đã ghép nối và mã ký đúng SHA-256.</p>
+                <?php $migration_gate = mg_saoluu_migration_production_gate(); $migration_ready = !is_wp_error($migration_gate); ?>
+                <?php if (!$migration_ready): ?>
+                    <div class="mgsl-note mgsl-warning"><?php echo esc_html(is_wp_error($migration_gate) ? $migration_gate->get_error_message() : 'Chưa đủ điều kiện.'); ?> Không tự mở chức năng production trong bản RC.</div>
+                <?php else: ?>
+                    <form method="post" enctype="multipart/form-data"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
+                        <input type="hidden" name="mg_action" value="migration_stage"><input type="hidden" name="return_tab" value="restore">
+                        <p><label>Gói mã hóa từ Local <input type="file" name="zip_file" accept=".mgbackup" data-mgsl-max-upload="<?php echo esc_attr((string) $zip_limit); ?>" required></label></p>
+                        <p><label>Recovery Key nguồn <input type="password" name="backup_password" autocomplete="off" required></label></p>
+                        <button class="button">1. Kiểm tra và lưu gói ngoài webroot, chưa nhập database</button>
+                    </form>
+                    <form method="post" style="margin-top:18px"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
+                        <input type="hidden" name="mg_action" value="migration_apply"><input type="hidden" name="return_tab" value="restore">
+                        <p><label>Gói đã kiểm tra <select name="file_name" required>
+                        <?php foreach ($files as $file): if (strpos(basename($file), 'backup_migration_pending_') !== 0) continue; ?>
+                            <option value="<?php echo esc_attr(basename($file)); ?>"><?php echo esc_html(basename($file)); ?></option>
+                        <?php endforeach; ?></select></label></p>
+                        <p><label>Mã ký từ Local (đúng gói + domain đích) <textarea name="migration_approval" rows="4" required></textarea></label></p>
+                        <div class="mgsl-form-row two"><p><label>Recovery Key nguồn <input type="password" name="backup_password" autocomplete="off" required></label></p>
+                        <p><label>Mật khẩu admin web thật <input type="password" name="admin_password" autocomplete="current-password" required></label></p></div>
+                        <p><label>Nhập lại domain đích <input type="text" name="migration_host" placeholder="<?php echo esc_attr(mg_saoluu_host()); ?>" required></label></p>
+                        <p><label>Câu xác nhận <input type="text" name="migration_phrase" placeholder="MIGRATE <?php echo esc_attr(strtoupper(mg_saoluu_host())); ?>" required></label></p>
+                        <p><label><input type="checkbox" name="migration_confirm" value="1" required> Đã có checkpoint độc lập, biết tài khoản admin nguồn và đồng ý thay DB site mới</label></p>
+                        <button class="button button-primary" onclick="return confirm('Sẽ thay database và file của WordPress đích mới. Tiếp tục?')">2. Chuyển site đã được ký</button>
+                    </form>
+                <?php endif; ?>
+            </section>
             <?php endif; ?>
             <section class="mgsl-card"><h2 class="mgsl-title">Khôi phục từ bản đang lưu</h2><p class="mgsl-small">Không cần upload lại nếu file đã có trên máy chủ. Checkpoint liên kết được đánh dấu; vẫn phải xác nhận trước khi ghi đè.</p><?php if (!$files): ?><p>Chưa có bản sao.</p><?php else: ?><form method="post" onsubmit="return confirm('Dữ liệu hiện tại sẽ bị thay thế. Tiếp tục?');"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="restore_saved"><input type="hidden" name="return_tab" value="restore"><div class="mgsl-form-row"><div class="mgsl-field"><label>Chọn bản sao</label><select name="file_name"><?php foreach ($files as $file): ?><option value="<?php echo esc_attr(basename($file)); ?>"><?php echo esc_html(basename($file)); ?><?php if ($checkpoint_name && basename($file) === $checkpoint_name): ?> · Checkpoint liên kết<?php endif; ?></option><?php endforeach; ?></select></div><div class="mgsl-field"><label>Phần cần phục hồi</label><select name="restore_mode"><option value="database">Chỉ database</option><option value="files_database">File website + database</option></select></div><div class="mgsl-field"><label>Nhập câu xác nhận</label><input type="text" name="restore_phrase" placeholder="<?php echo esc_attr($phrase); ?>" required></div><div><button class="button button-secondary" <?php disabled(empty($self_integrity['ok']) || ($env==='production' && (!$production_unlocked || strpos(MG_SAOLUU_VERSION, '-rc') !== false))); ?> style="width:100%">Khôi phục</button></div></div><p class="mgsl-field"><label>Mật khẩu nếu bản sao đã mã hóa</label><input type="password" name="backup_password" autocomplete="current-password" placeholder="Để trống nếu bản sao không mã hóa"></p><?php if ($env === 'production'): ?><div class="mgsl-sensitive-box"><div class="mgsl-field"><label>Mật khẩu tài khoản quản trị hiện tại</label><input type="password" name="admin_password" autocomplete="current-password" required></div><div class="mgsl-field"><label>Nhập lại domain web thật</label><input type="text" name="restore_host" placeholder="<?php echo esc_attr(mg_saoluu_host()); ?>" required></div><p class="mgsl-small mgsl-muted">Ngoài chữ ký Local, thao tác vẫn yêu cầu mật khẩu admin + câu RESTORE đúng domain. Sai 5 lần sẽ khóa 30 phút.</p></div><?php endif; ?><p><label><input type="checkbox" name="change_url" value="1" <?php checked($env !== 'production'); ?>> Tự đổi tên miền nguồn thành tên miền hiện tại</label></p><p><label><input type="checkbox" name="restore_confirm" value="1" required> Tôi hiểu dữ liệu hiện tại sẽ bị thay thế</label></p></form><?php endif; ?></section>
             <?php if ($env !== 'production'): ?>

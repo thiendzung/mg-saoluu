@@ -27,7 +27,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: zip, openssl
+          extensions: zip, openssl, sodium
           coverage: none
 
       - name: Confirm release identity
@@ -35,8 +35,8 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#release/v}"
-          if [[ "$version" != "1.2.1-rc6" ]]; then
-            echo "This RC workflow is limited to v1.2.1-rc6; refusing unexpected branch." >&2
+          if [[ "$version" != "1.3.0-rc3" ]]; then
+            echo "This RC workflow is limited to v1.3.0-rc3; refusing unexpected branch." >&2
             exit 1
           fi
           python3 - "$version" <<'PY'
@@ -61,10 +61,12 @@ jobs:
         run: |
           set -euo pipefail
           zipfile="$RUNNER_TEMP/mg-saoluu-v$VERSION.zip"
-          sh scripts/verify_rc3_release.sh "$zipfile" | tee "$RUNNER_TEMP/mgsl-rc6-gates.log"
-          test "$(grep -Fc 'TESTS 99/99 PASS' "$RUNNER_TEMP/mgsl-rc6-gates.log")" -eq 2
-          test "$(grep -Fc 'TESTS 4/4 PASS' "$RUNNER_TEMP/mgsl-rc6-gates.log")" -eq 2
-          test "$(grep -Fc 'PASS integrity manifest matches 27 source files' "$RUNNER_TEMP/mgsl-rc6-gates.log")" -eq 2
+          sh scripts/verify_rc3_release.sh "$zipfile" | tee "$RUNNER_TEMP/mgsl-rc9-gates.log"
+          test "$(grep -Fxc 'TESTS 106/106 PASS' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
+          test "$(grep -Fxc 'TESTS 4/4 PASS' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
+          test "$(grep -Fxc 'MIGRATION TESTS 35/35 PASS' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
+          test "$(grep -Fxc 'QA GATE TESTS 4/4 PASS' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
+          test "$(grep -Fxc 'PASS integrity manifest matches 28 source files' "$RUNNER_TEMP/mgsl-rc9-gates.log")" -eq 2
           unzip -t "$zipfile" >/dev/null
           cd "$RUNNER_TEMP"
           sha256sum "mg-saoluu-v$VERSION.zip" > "mg-saoluu-v$VERSION.zip.sha256"

@@ -3,10 +3,10 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.2.1-rc6
+Stable tag: 1.3.0-rc3
 License: GPLv2 or later
 
-MG Sao Luu v1.2.1-rc6 la pre-release thu nghiem Backup, Verify, Store, Restore tren clone.
+MG Sao Luu v1.3.0-rc3 la pre-release thu nghiem Backup, Verify, Restore va Local -> Production migration tren clone.
 
 == Description ==
 
@@ -28,6 +28,17 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 5. Keep hosting JetBackup + offsite independently. Production only after separate acceptance.
 
 == Changelog ==
+
+= 1.3.0-rc3 =
+* URL migration uses canonical slashless bases so stored URLs with or without trailing slash are updated.
+* WordPress core subdirectory URLs are rewritten before shorter home URLs.
+* RC production writes remain blocked; Staging QA only until runtime acceptance.
+
+= 1.3.0-rc2 =
+* Local -> new production encrypted migration package with target-bound Ed25519 single-use approval.
+* Canonical WordPress domain protects restore environment from spoofed Host header.
+* Strict destination empty-site, Woo HPOS, matching DB prefix and archive checksum gates.
+* Production write stays disabled in RC; requires stable build and server opt-in after runtime acceptance.
 
 = 1.2.1-rc6 =
 * Honest in-progress state, PHP upload limit and linked rollback checkpoint in UI.
