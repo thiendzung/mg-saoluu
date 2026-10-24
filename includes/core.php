@@ -339,12 +339,31 @@ function mg_saoluu_private_state_write($name, $data) {
     $path = mg_saoluu_private_state_path($name);
     if (is_wp_error($path)) return $path;
     if (!is_array($data)) return new WP_Error('private_state_invalid', 'Private state phải là dữ liệu mảng.');
-    if (!mg_saoluu_save_metadata($path, $data)) {
+    $json = wp_json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    if (!is_string($json)) return new WP_Error('private_state_write', 'Không mã hóa được private state.');
+
+    try { $suffix = bin2hex(random_bytes(8)); }
+    catch (Throwable $e) { return new WP_Error('private_state_write', 'Không tạo được private state tạm.'); }
+    $temp = dirname($path) . '/.mg-state-' . $suffix . '.tmp';
+    $handle = @fopen($temp, 'xb');
+    if (!$handle) return new WP_Error('private_state_write', 'Không tạo được private state tạm.');
+    @chmod($temp, 0600);
+    $size = strlen($json);
+    $offset = 0;
+    while ($offset < $size) {
+        $written = @fwrite($handle, substr($json, $offset));
+        if (!is_int($written) || $written <= 0) break;
+        $offset += $written;
+    }
+    $ok = $offset === $size && @fflush($handle);
+    @fclose($handle);
+    if (!$ok || !@rename($temp, $path)) {
+        @unlink($temp);
         return new WP_Error('private_state_write', 'Không ghi được private state an toàn.');
     }
+    @chmod($path, 0600);
     clearstatcache(true, $path);
     if (!is_file($path) || is_link($path)) return new WP_Error('private_state_write', 'Private state sau ghi không hợp lệ.');
-    @chmod($path, 0600);
     return true;
 }
 
