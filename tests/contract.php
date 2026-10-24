@@ -74,6 +74,8 @@ function mg_saoluu_security_restore_unlock_info(){return $GLOBALS['test_restore_
 require_once $base.'core.php';
 require_once $base.'diagnostics.php';
 require_once $base.'crypto.php';
+require_once $base.'security.php';
+require_once $base.'migration.php';
 require_once $base.'google-drive.php';
 require_once $base.'catalog.php';
 require_once $base.'backup.php';
