@@ -1,3 +1,11 @@
+## 1.2.1-rc7 — Cron observability & honest offsite status (2026-10-24)
+
+- Track the last real SQL/full backup attempt and locally verified success separately from Google Drive upload status, without storing secrets or filenames.
+- Flag missing/late cron events and overdue backups in Overview without polling or starting a job when the dashboard loads.
+- An uploaded-but-not-downloaded Drive archive is explicitly unverified; a Drive failure is not reported as full offsite success.
+- Add deterministic PHP regression tests for the schedule outcomes on source and extracted ZIP; production restore remains hard-blocked.
+- Pending CI on exact SHA and Agent Local WordPress/DB acceptance; no stable release implied.
+
 ## 1.2.1-rc6 — Backup/restore UI and failure safety (2026-10-24)
 
 - Prevent duplicate operations and show honest pending feedback; expose PHP upload limits and checkpoint/journal status.
