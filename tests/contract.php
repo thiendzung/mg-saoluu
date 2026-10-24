@@ -163,6 +163,28 @@ $ordinary_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
 test('ordinary restore destination passes', $ordinary_copy === true && file_get_contents($restore_target_dir . '/ordinary.txt') === 'ordinary-content');
 @unlink($restore_target_dir . '/ordinary.txt');
 
+$stage_plugin_dir = $restore_stage . '/wp-content/plugins/mg-saoluu';
+$target_plugin_dir = ABSPATH . 'wp-content/plugins/mg-saoluu';
+wp_mkdir_p($stage_plugin_dir); wp_mkdir_p($target_plugin_dir);
+file_put_contents($stage_plugin_dir . '/migration-source-only.php', 'SOURCE-PLUGIN');
+file_put_contents($target_plugin_dir . '/migration-source-only.php', 'TARGET-PLUGIN');
+file_put_contents($restore_stage . '/wp-content/uploads/migration-new.txt', 'MIGRATION-NEW');
+$migration_new = mg_saoluu_stage_new_files($restore_stage, true);
+test('migration rollback inventory excludes MG Sao Luu plugin files',
+    is_array($migration_new)
+    && in_array('wp-content/uploads/migration-new.txt', $migration_new, true)
+    && !in_array('wp-content/plugins/mg-saoluu/migration-source-only.php', $migration_new, true));
+$migration_copy = mg_saoluu_copy_stage_files($restore_stage, 'local_copy', true);
+test('migration never overwrites running MG Sao Luu plugin',
+    $migration_copy === true
+    && file_get_contents($target_plugin_dir . '/migration-source-only.php') === 'TARGET-PLUGIN'
+    && file_get_contents($restore_target_dir . '/migration-new.txt') === 'MIGRATION-NEW');
+@unlink($restore_target_dir . '/migration-new.txt');
+@unlink($stage_plugin_dir . '/migration-source-only.php');
+@rmdir($stage_plugin_dir);
+@unlink($target_plugin_dir . '/migration-source-only.php');
+@rmdir($target_plugin_dir);
+
 $leaf_link = $restore_target_dir . '/leaf-link.txt';
 file_put_contents($restore_stage . '/wp-content/uploads/leaf-link.txt', 'must-not-follow-leaf-link');
 symlink($outside_sentinel, $leaf_link);
