@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.2.1-rc8 (pre-release; backup & restore clone)
+# MG Sao Lưu v1.2.1-rc9 (pre-release; backup & restore clone)
 
 WordPress Backup → Verify → Store → Restore. Experimental restore on isolated Local/Staging clones only. Production restore is blocked. No live synchronization.
 
@@ -25,3 +25,7 @@ See [release QA](docs/RELEASE_QA.md) and [recovery runbook](RECOVERY_RUNBOOK.md)
 
 ### v1.2.1-rc6 limitation
 Complex PHP-serialized values containing unavailable plugin objects, enums, cyclic references or excessively deep structures are kept unchanged during URL replacement to prevent corruption. Inspect remaining old URLs on the restored clone; do not treat this pre-release as proof of complete URL migration.
+
+
+### Restore engine self-protection
+Full backups may contain the MG Sao Luu plugin version that existed when the archive was created. During runtime Restore/Rollback, the plugin deliberately skips its own currently executing directory so an older archive cannot downgrade or replace the restore engine mid-transaction. The archived copy remains available for offline disaster recovery; restore of the plugin itself must be done separately from a trusted release ZIP/Recovery Runbook.
