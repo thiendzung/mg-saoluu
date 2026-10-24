@@ -769,7 +769,7 @@ function mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore
     return ['rollback' => true, 'journal' => $journal];
 }
 
-function mg_saoluu_rollback_from_backup($pre_path, $restore_files, $password, $target_settings) {
+function mg_saoluu_rollback_from_backup($pre_path, $restore_files, $password, $target_settings, $expected_schema = []) {
     $prepared = mg_saoluu_prepare_backup_file($pre_path, $password);
     if (is_wp_error($prepared)) return $prepared;
     $stage = mg_saoluu_make_temp_dir('mg-rollback-');
@@ -783,6 +783,10 @@ function mg_saoluu_rollback_from_backup($pre_path, $restore_files, $password, $t
         if (is_wp_error($destinations)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($prepared['path']); return $destinations; }
     }
     $import = mg_saoluu_run_mysql_import($stage . 'database_backup.sql');
+    if (!is_wp_error($import)) {
+        $schema = mg_saoluu_reconcile_database_schema($expected_schema);
+        if (is_wp_error($schema)) $import = $schema;
+    }
     if (!is_wp_error($import) && $restore_files) $import = mg_saoluu_copy_stage_files($stage, sanitize_key($manifest['backup_type'] ?? 'safe_full'));
     mg_saoluu_restore_target_settings($target_settings);
     wp_cache_flush();
@@ -901,6 +905,11 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
             $baseline_health->get_error_message()
         );
     }
+    $baseline_schema = mg_saoluu_database_schema_inventory();
+    if (is_wp_error($baseline_schema)) {
+        if ($prepared['temporary']) @unlink($zip_file);
+        return $baseline_schema;
+    }
 
     $checkpoint = mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore_files);
     if (is_wp_error($checkpoint)) {
@@ -909,6 +918,10 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     }
     $rollback_restore = !empty($checkpoint['rollback']);
     $previous_journal = $checkpoint['journal'];
+    if ($rollback_restore && !is_array($previous_journal['baseline_db_schema'] ?? null)) {
+        if ($prepared['temporary']) @unlink($zip_file);
+        return new WP_Error('rollback_schema_inventory_missing', 'Checkpoint cũ thiếu inventory schema; không thể rollback chính xác bằng RC4.');
+    }
     if ($restore_files && $type === 'sql') { if ($prepared['temporary']) @unlink($zip_file); return new WP_Error('files_missing', 'Bản sao này chỉ có database.'); }
     if ($restore_files && $target_env !== 'production' && $type === 'safe_full' && $source_env === 'production') {
         if ($prepared['temporary']) @unlink($zip_file);
@@ -960,6 +973,9 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         'restore_files' => (bool) $restore_files,
         'new_file_count' => count($new_files),
         'new_files' => $new_files,
+        'baseline_db_schema' => $baseline_schema,
+        'baseline_db_schema_count' => count($baseline_schema),
+        'baseline_db_schema_fingerprint' => mg_saoluu_database_schema_fingerprint($baseline_schema),
         'started_at' => current_time('mysql'),
         'started_at_epoch' => time(),
     ];
@@ -989,6 +1005,16 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     try {
         $import = mg_saoluu_run_mysql_import($stage . 'database_backup.sql');
         if (is_wp_error($import)) throw new RuntimeException($import->get_error_message());
+        if ($rollback_restore) {
+            $schema_reconcile = mg_saoluu_reconcile_database_schema($previous_journal['baseline_db_schema'] ?? []);
+            if (is_wp_error($schema_reconcile)) throw new RuntimeException($schema_reconcile->get_error_message());
+            $journal['rollback_db_schema_reconcile'] = $schema_reconcile;
+        } else {
+            $post_import_schema = mg_saoluu_database_schema_inventory();
+            if (is_wp_error($post_import_schema)) throw new RuntimeException($post_import_schema->get_error_message());
+            $journal['post_import_db_schema_count'] = count($post_import_schema);
+            $journal['introduced_db_schema_count'] = count(array_diff_key($post_import_schema, $baseline_schema));
+        }
         $journal['status'] = 'database_imported';
         $journal_saved = mg_saoluu_restore_journal($journal);
         if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
@@ -1043,7 +1069,13 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     } catch (Throwable $e) {
         $error = new WP_Error('restore_failed', $e->getMessage());
         $journal['status'] = 'rolling_back'; $journal['error'] = sanitize_text_field($e->getMessage()); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_rollback_started',['type'=>$type]);
-        $rollback = mg_saoluu_rollback_from_backup($pre_path, $restore_files, $rollback_password, $target_settings);
+        $rollback = mg_saoluu_rollback_from_backup(
+            $pre_path,
+            $restore_files,
+            $rollback_password,
+            $target_settings,
+            $journal['baseline_db_schema'] ?? []
+        );
         if (is_wp_error($rollback)) {
             $journal['status'] = 'rollback_failed';
             $journal['rollback_error'] = $rollback->get_error_message();
@@ -1157,6 +1189,8 @@ function mg_saoluu_restore_raw_sql($sql_file, $source_url = '', $change_url = tr
     }
     $safe = mg_saoluu_storage_preflight();
     if (is_wp_error($safe)) return $safe;
+    $baseline_schema = mg_saoluu_database_schema_inventory();
+    if (is_wp_error($baseline_schema)) return $baseline_schema;
     $rollback_password = mg_saoluu_encryption_password('');
     $pre = mg_saoluu_create_backup('sql', 'Tự động trước khi nhập file SQL', 'backup_pre_restore', false, [
         'encrypt' => $rollback_password !== '', 'password' => $rollback_password, 'upload_drive' => false, 'purpose' => 'rollback'
@@ -1177,7 +1211,13 @@ function mg_saoluu_restore_raw_sql($sql_file, $source_url = '', $change_url = tr
         $health = mg_saoluu_restore_health_check(mg_saoluu_environment() !== 'production' ? $target_home : '');
         if (is_wp_error($health)) throw new RuntimeException($health->get_error_message());
     } catch (Throwable $e) {
-        $rollback = mg_saoluu_rollback_from_backup(mg_saoluu_get_backup_dir() . $pre, false, $rollback_password, $target_settings);
+        $rollback = mg_saoluu_rollback_from_backup(
+            mg_saoluu_get_backup_dir() . $pre,
+            false,
+            $rollback_password,
+            $target_settings,
+            $baseline_schema
+        );
         $error = is_wp_error($rollback)
             ? new WP_Error('rollback_failed', 'Nhập SQL lỗi và không thể tự quay lại. Bản dự phòng: ' . $pre . '. ' . $rollback->get_error_message())
             : new WP_Error('restore_rolled_back', 'Nhập SQL lỗi nên plugin đã tự quay lại. ' . $e->getMessage());
