@@ -1,3 +1,12 @@
+## 1.2.1-rc8 — Transactional rollback remediation (2026-10-24)
+
+- Require a healthy current target before minting the pre-restore rollback checkpoint; a DB that references a missing active theme fails closed before any restore write.
+- An explicit rollback is recorded as `rolled_back` only after the checkpoint DB/files, restore health check and original new-file cleanup all succeed.
+- If an explicit rollback fails but its guard backup restores successfully, preserve the original completed-restore journal/checkpoint and record `rollback_attempt_status=failed_reverted`; never report a false rollback success.
+- Persist epoch timestamps for new restore transactions and compute legacy wall-clock durations in the WordPress timezone, fixing the UTC+7 +25,200-second UI error.
+- Add regression coverage for unhealthy rollback baselines, truthful rollback recovery, cleanup evidence and duration math.
+- Runtime re-acceptance on an isolated clone is required before merge or production restore.
+
 ## 1.2.1-rc7 — Cron observability & honest offsite status (2026-10-24)
 
 - Track the last real SQL/full backup attempt and locally verified success separately from Google Drive upload status, without storing secrets or filenames.
