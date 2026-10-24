@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.2.1-rc6 (pre-release; backup & restore clone)
+# MG Sao Lưu v1.2.1-rc7 (pre-release; backup & restore clone)
 
 WordPress Backup → Verify → Store → Restore. Experimental restore on isolated Local/Staging clones only. Production restore is blocked. No live synchronization.
 
@@ -8,6 +8,9 @@ WordPress Backup → Verify → Store → Restore. Experimental restore on isola
 3. Create a fresh isolated Local clone with the same DB table prefix, disable email/payment/webhooks/indexing. Use **Restore → Nhập .mgbackup/.zip**, supply the source key, change URL (preserving GUID), restore DB+files.
 4. Under **Cài đặt → Hệ thống → Debug backup/restore**, download `mg-saoluu-debug.jsonl`. Only event states and whitelisted fields; no passwords or customer details.
 5. Inspect Woo HPOS, media, custom tables, theme/plugins, URL/GUID and rollback evidence. Never overwrite canonical `motgu.test` while developing.
+
+### Scheduled backups
+SQL daily and full weekly are event-driven via WP-Cron. The Overview now displays the *last actual attempt*, *last locally verified backup*, next event and failure/overdue warnings. An offsite upload error never counts as an offsite success; an uploaded Drive file remains **unverified** until download and comparison. The status record stores only timestamps and error codes, not secrets or paths. Enabling the schedule does not prove that WordPress cron ran.
 
 ### Logging
 Plugin debug runs by default on Local/Staging only, OFF on Production, files stored outside webroot, 0600, 2 MB log rotation. An explicit `define('MG_SAOLUU_DEBUG', true);` overrides this for authorized staging/incident checks; disable afterwards. WordPress `WP_DEBUG_LOG` is separate. Do not expose PHP errors to public visitors.
