@@ -98,6 +98,61 @@ test('reject symlink pointing into webroot',!mg_saoluu_storage_path_safe($root.'
 test('accept real external directory',mg_saoluu_storage_path_safe($root.'/outside/vault'));
 test('reject relative path',!mg_saoluu_storage_path_safe('wp-content/backups'));
 
+// Restore destination containment: ordinary files pass, symlink leaves/ancestors fail closed.
+$outside_sentinel = $root . '/outside/restore-sentinel.txt';
+file_put_contents($outside_sentinel, 'SENTINEL-ORIGINAL');
+$restore_stage = $root . '/restore-stage';
+$restore_target_dir = ABSPATH . 'wp-content/uploads';
+wp_mkdir_p($restore_stage . '/wp-content/uploads');
+wp_mkdir_p($restore_target_dir);
+file_put_contents($restore_stage . '/wp-content/uploads/ordinary.txt', 'ordinary-content');
+$ordinary_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+test('ordinary restore destination passes', $ordinary_copy === true && file_get_contents($restore_target_dir . '/ordinary.txt') === 'ordinary-content');
+@unlink($restore_target_dir . '/ordinary.txt');
+
+$leaf_link = $restore_target_dir . '/leaf-link.txt';
+file_put_contents($restore_stage . '/wp-content/uploads/leaf-link.txt', 'must-not-follow-leaf-link');
+symlink($outside_sentinel, $leaf_link);
+$leaf_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+$leaf_cleanup = mg_saoluu_remove_new_restore_files(['wp-content/uploads/leaf-link.txt']);
+test('existing file symlink blocks copy and unlink', is_wp_error($leaf_copy) && $leaf_copy->get_error_code() === 'restore_destination_symlink' && $leaf_cleanup['failed'] === 1 && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($leaf_link);
+
+$uploads_real = ABSPATH . 'wp-content/uploads-real';
+rename($restore_target_dir, $uploads_real);
+symlink($root . '/outside', $restore_target_dir);
+file_put_contents($restore_stage . '/wp-content/uploads/ancestor-link.txt', 'must-not-follow-ancestor-link');
+$ancestor_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+$ancestor_cleanup = mg_saoluu_remove_new_restore_files(['wp-content/uploads/ancestor-link.txt']);
+test('symlinked ancestor blocks copy and unlink', is_wp_error($ancestor_copy) && $ancestor_copy->get_error_code() === 'restore_destination_symlink' && $ancestor_cleanup['failed'] === 1 && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($restore_target_dir);
+rename($uploads_real, $restore_target_dir);
+
+$dangling_link = $restore_target_dir . '/dangling-link.txt';
+file_put_contents($restore_stage . '/wp-content/uploads/dangling-link.txt', 'must-not-follow-dangling-link');
+symlink($root . '/outside/missing-sentinel.txt', $dangling_link);
+$dangling_new = mg_saoluu_stage_new_files($restore_stage);
+$dangling_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+test('dangling symlink is not recorded as new', is_wp_error($dangling_new) && $dangling_new->get_error_code() === 'restore_destination_symlink' && is_wp_error($dangling_copy) && $dangling_copy->get_error_code() === 'restore_destination_symlink');
+@unlink($dangling_link);
+
+$race_preflight = mg_saoluu_validate_restore_destinations($restore_stage, 'safe_full');
+rename($restore_target_dir, $uploads_real);
+symlink($root . '/outside', $restore_target_dir);
+$race_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+test('changed ancestor after preflight fails closed', $race_preflight === true && is_wp_error($race_copy) && $race_copy->get_error_code() === 'restore_destination_symlink' && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($restore_target_dir);
+rename($uploads_real, $restore_target_dir);
+
+$race_leaf = $restore_target_dir . '/race-leaf.txt';
+file_put_contents($race_leaf, 'safe-before-race');
+$race_leaf_preflight = mg_saoluu_restore_destination_check('wp-content/uploads/race-leaf.txt');
+@unlink($race_leaf);
+symlink($outside_sentinel, $race_leaf);
+$race_leaf_cleanup = mg_saoluu_remove_new_restore_files(['wp-content/uploads/race-leaf.txt']);
+test('changed leaf before cleanup fails closed', !is_wp_error($race_leaf_preflight) && $race_leaf_preflight['regular'] === true && $race_leaf_cleanup['failed'] === 1 && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($race_leaf);
+
 test('debug enabled on clone',mg_saoluu_debug_enabled()===true);
 test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
 test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
