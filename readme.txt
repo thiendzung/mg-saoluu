@@ -6,7 +6,7 @@ Requires PHP: 8.3
 Stable tag: 1.2.1-rc3
 License: GPLv2 or later
 
-MG Sao Luu v1.2.1-rc2 la release candidate danh cho Backup, Verify, Store, Restore.
+MG Sao Luu v1.2.1-rc3 la release candidate danh cho Backup, Verify, Store, Restore.
 
 == Description ==
 
