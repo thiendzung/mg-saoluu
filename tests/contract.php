@@ -129,6 +129,7 @@ test('accept real external directory',mg_saoluu_storage_path_safe($root.'/outsid
 test('reject relative path',!mg_saoluu_storage_path_safe('wp-content/backups'));
 
 $options_before_private_state = $GLOBALS['test_options'];
+$transients_before_private_state = $GLOBALS['test_transients'];
 $private_state_write = mg_saoluu_private_state_write('migration-nonces.json', [
     str_repeat('a', 48) => ['at' => 1, 'sha256' => str_repeat('b', 64)]
 ]);
@@ -138,7 +139,8 @@ test('private operational state writes outside webroot without touching wp_optio
     && is_string($private_state_path)
     && str_starts_with($private_state_path, $external)
     && !mg_saoluu_storage_is_inside($private_state_path, ABSPATH)
-    && $GLOBALS['test_options'] === $options_before_private_state);
+    && $GLOBALS['test_options'] === $options_before_private_state
+    && $GLOBALS['test_transients'] === $transients_before_private_state);
 test('private operational state is mode 0600 and roundtrips JSON',
     substr(sprintf('%o', fileperms($private_state_path)), -4) === '0600'
     && isset(mg_saoluu_private_state_read('migration-nonces.json')[str_repeat('a', 48)]));
@@ -304,7 +306,7 @@ test('maintenance symlink cannot overwrite outside sentinel',
 @unlink(ABSPATH . '.maintenance');
 
 // Regression from RC3 runtime: baseline had 12 DB objects, migration produced 83,
-// and checkpoint import alone left all 83. RC4 must reconcile exactly to 12.
+// and checkpoint import alone left all 83. RC5 must retain RC4 schema reconciliation exactly to 12.
 class FixtureSchemaDB {
  public array $objects;
  public array $queries=[];
