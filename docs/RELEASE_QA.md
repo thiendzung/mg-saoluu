@@ -1,12 +1,21 @@
 # MG Sao Lưu v1.2.1-rc3 — Clone trial gate
 
-**State:** Implementation committed on a review branch; runtime PHP/WordPress acceptance still pending. Production RESTORE remains BLOCKED in RC.
+**State:** Agent Local reports the clone restore and Issue #8 safety drill PASS at exact HEAD `19035d9af2a81bc97ffb0b7e3c6d892151a8f384`; this evidence does not automatically cover later review fixes. Production RESTORE remains BLOCKED in RC.
 
 ## New first-trial functions
 - Encrypted `local_copy` Host-to-Local package from Admin Backup.
 - Nonproduction UI form to import uploaded `.mgbackup` / `.zip` archive on separate clone.
 - Private structured JSONL: default on Local/Staging, off on Production (unless explicit `MG_SAOLUU_DEBUG` true), outside webroot, capped and rolled. Log stores allowlisted stage names and counts, not credentials.
 - Reject duplicate ZIP paths and incomplete extraction streams. Existing safety gates (prefix, prebackup, RC production restore lock) preserved.
+
+## Final review / release acceptance
+- Run `sh scripts/verify_rc3_release.sh` from a clean disposable checkout at the **latest exact HEAD**. It executes PHP lint, integrity and contracts on source and again against the **extracted final ZIP** (including the 4 unsafe-config tests). Store the command exit status, final ZIP SHA256 and sanitized output.
+- The RC user interface must state **production restore locked** without offering a misleading Local-approval workflow. Direct/stale `security_*restore*` POST requests cannot unlock it. The underlying restore hard-block must remain.
+- The maintenance marker `.maintenance` must fail closed on write failure and report cleanup failure instead of falsely confirming restore success. Validate a negative test on a disposable clone.
+- **Network isolation is a separate runtime gate:** do not accept a copied Woo DB until outbound SMTP, payment gateways, webhooks and Action Scheduler/cron have been disabled or blocked externally and verified by a controlled test. `pre_wp_mail` alone does **not** prove isolation.
+- Physical disk exhaustion was not performed; **simulated low-disk preflight is not equivalent**. Keep this limitation in the release decision and avoid claims of crash-atomic rollback.
+- For debugging, use structured plugin JSONL and WordPress PHP logs **outside webroot** on clones; verify redaction. Do not enable production debug/restore.
+- All evidence must cite the exact source SHA and extracted ZIP SHA; previous SHA reports are not transferable.
 
 ## Source and packaged checks
 Run on exact branch SHA, and repeat on extracted ZIP:

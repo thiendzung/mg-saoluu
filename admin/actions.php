@@ -20,6 +20,16 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         return;
     }
 
+    // RC release cannot authorize production restore, even via a forged/stale admin POST.
+    // Keep security_lock_restore available to revoke any old unlock token.
+    if (strpos(MG_SAOLUU_VERSION, '-rc') !== false && in_array($action, [
+        'security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval',
+    ], true)) {
+        $status = 'error';
+        $message = 'Bản RC không hỗ trợ cấp quyền Restore production. Chỉ kiểm thử trên clone độc lập.';
+        return;
+    }
+
     if ($action === 'setup_environment') {
         $result = mg_saoluu_save_environment_choice($_POST['environment'] ?? 'auto', sanitize_text_field(wp_unslash($_POST['environment_verify'] ?? '')));
         if (is_wp_error($result)) { $status = 'error'; $message = $result->get_error_message(); $_GET['setup'] = 1; $_GET['step'] = 1; return; }

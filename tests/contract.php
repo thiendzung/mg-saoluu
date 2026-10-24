@@ -153,6 +153,32 @@ $race_leaf_cleanup = mg_saoluu_remove_new_restore_files(['wp-content/uploads/rac
 test('changed leaf before cleanup fails closed', !is_wp_error($race_leaf_preflight) && $race_leaf_preflight['regular'] === true && $race_leaf_cleanup['failed'] === 1 && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
 @unlink($race_leaf);
 
+// The maintenance marker must not silently report success if it cannot be safely managed.
+$maintenance_on = mg_saoluu_maintenance(true);
+test('maintenance marker created before restore DB write',
+    $maintenance_on === true && is_file(ABSPATH . '.maintenance'));
+$maintenance_off = mg_saoluu_maintenance(false);
+test('maintenance marker removed on cleanup',
+    $maintenance_off === true && !file_exists(ABSPATH . '.maintenance'));
+mkdir(ABSPATH . '.maintenance', 0700);
+$maintenance_dir_error = mg_saoluu_maintenance(true);
+test('maintenance path directory fails closed',
+    is_wp_error($maintenance_dir_error) && $maintenance_dir_error->get_error_code() === 'restore_destination_directory');
+rmdir(ABSPATH . '.maintenance');
+file_put_contents(ABSPATH . '.maintenance', 'existing-wordpress-updater-marker');
+$maintenance_existing_error = mg_saoluu_maintenance(true);
+test('existing WordPress maintenance marker is preserved',
+    is_wp_error($maintenance_existing_error)
+    && $maintenance_existing_error->get_error_code() === 'maintenance_already_active'
+    && file_get_contents(ABSPATH . '.maintenance') === 'existing-wordpress-updater-marker');
+@unlink(ABSPATH . '.maintenance');
+symlink($outside_sentinel, ABSPATH . '.maintenance');
+$maintenance_link_error = mg_saoluu_maintenance(true);
+test('maintenance symlink cannot overwrite outside sentinel',
+    is_wp_error($maintenance_link_error) && $maintenance_link_error->get_error_code() === 'restore_destination_symlink'
+    && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink(ABSPATH . '.maintenance');
+
 test('debug enabled on clone',mg_saoluu_debug_enabled()===true);
 test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
 test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
@@ -330,6 +356,14 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  $_POST=['mg_action'=>$legacy];$message='';$status='';
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
+}
+// RC must reject stale/direct approval POST even with valid admin permissions and nonce.
+foreach (['security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval'] as $blocked_action) {
+    $_POST = ['mg_action' => $blocked_action, 'mg_nonce' => 'fixture'];
+    $rc_message = ''; $rc_status = '';
+    mg_saoluu_handle_actions($rc_message, $rc_status);
+    test('RC prevents approval POST: ' . $blocked_action,
+        $rc_status === 'error' && str_contains($rc_message, 'Bản RC'));
 }
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 

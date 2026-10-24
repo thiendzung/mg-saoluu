@@ -2,7 +2,7 @@
 /** Regression test for the source-to-package SHA-256 manifest boundary. */
 if (PHP_SAPI !== 'cli') { fwrite(STDERR, "FAIL CLI only\n"); exit(1); }
 
-$root = dirname(__DIR__);
+$root = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/');
 $path = $root . '/integrity.json';
 $manifest = json_decode((string) file_get_contents($path), true);
 if (!is_array($manifest) || ($manifest['format'] ?? '') !== 'mg-saoluu-integrity' || !is_array($manifest['files'] ?? null)) {
