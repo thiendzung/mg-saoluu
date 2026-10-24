@@ -34,15 +34,13 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 * Backup archives still retain MG Sao Luu for offline disaster recovery; runtime restore skips only the active plugin directory.
 * Add regression coverage for extraction, copy, new-file bookkeeping and rollback cleanup self-protection.
 
-
-= 1.2.1-rc9 =
+= 1.2.1-rc8 =
 * Fix transactional rollback: only report rolled_back after the original checkpoint is actually restored and cleanup succeeds.
 * Refuse restore when the current target is not healthy enough to create a trustworthy rollback checkpoint.
 * Preserve the original checkpoint if a rollback attempt fails but the safety recovery succeeds.
 * Fix restore duration calculation across WordPress/server timezone differences.
 
-
-= 1.2.1-rc9 =
+= 1.2.1-rc7 =
 * Show the last real scheduled backup result and missed cron events in Overview.
 * Keep local verification distinct from failed or unverified Google Drive uploads.
 * Add isolated regression tests for schedule health; production restore stays blocked.
