@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.2.1-rc7 (pre-release; backup & restore clone)
+# MG Sao Lưu v1.2.1-rc8 (pre-release; backup & restore clone)
 
 WordPress Backup → Verify → Store → Restore. Experimental restore on isolated Local/Staging clones only. Production restore is blocked. No live synchronization.
 
