@@ -1,0 +1,33 @@
+name: MG Sao Luu - verify pull request
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  source-and-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, openssl
+          coverage: none
+      - name: JavaScript syntax
+        run: node --check assets/js/admin.js
+      - name: PHP lint, contracts, integrity and packaged ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh scripts/verify_rc3_release.sh "$RUNNER_TEMP/mgsl-pr-verified.zip"
+          unzip -t "$RUNNER_TEMP/mgsl-pr-verified.zip" >/dev/null
+          echo "PR source and packaged archive PASS"
