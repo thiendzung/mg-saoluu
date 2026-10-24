@@ -3,10 +3,11 @@
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 define('ABSPATH', __DIR__ . '/');
 define('DB_HOST', 'mysql.internal');
-define('MG_SAOLUU_VERSION', '1.3.0-rc4');
+define('MG_SAOLUU_VERSION', '1.3.0-rc5');
 define('MINUTE_IN_SECONDS', 60);
 $GLOBALS['mgsl_test_home'] = 'https://new.example.com/';
 $GLOBALS['mgsl_test_options'] = [];
+$GLOBALS['mgsl_private_state'] = [];
 $GLOBALS['mgsl_migration_tests'] = 0;
 function add_action(...$args) {}
 function add_filter(...$args) {}
@@ -14,6 +15,8 @@ function wp_parse_url($url, $component = -1) { return parse_url((string) $url, $
 function home_url($path = '/') { return rtrim($GLOBALS['mgsl_test_home'], '/') . $path; }
 function get_option($k, $default = null) { return $GLOBALS['mgsl_test_options'][$k] ?? $default; }
 function update_option($k, $value, $autoload = false) { $GLOBALS['mgsl_test_options'][$k] = $value; return true; }
+function mg_saoluu_private_state_read($name) { return $GLOBALS['mgsl_private_state'][$name] ?? []; }
+function mg_saoluu_private_state_write($name, $value) { $GLOBALS['mgsl_private_state'][$name] = $value; return true; }
 function sanitize_text_field($value) { return trim((string) $value); }
 function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags); }
 class WP_Error {
@@ -131,7 +134,11 @@ $untrusted = $GLOBALS['mgsl_test_options']['mg_saoluu_trusted_signers'];
 $GLOBALS['mgsl_test_options']['mg_saoluu_trusted_signers'] = [];
 check('unpaired Local source rejected', is_wp_error(mg_saoluu_migration_verify_grant($code, $sha, $manifest, 'https://new.example.com')));
 $GLOBALS['mgsl_test_options']['mg_saoluu_trusted_signers'] = $untrusted;
+$options_before_consume = $GLOBALS['mgsl_test_options'];
 check('one-time migration grant can be consumed', mg_saoluu_migration_consume_grant($verified) === true);
+check('consuming migration grant does not mutate wp_options',
+    $GLOBALS['mgsl_test_options'] === $options_before_consume
+    && isset($GLOBALS['mgsl_private_state']['migration-nonces.json'][$payload['nonce']]));
 check('replayed signed grant rejected', is_wp_error(mg_saoluu_migration_verify_grant($code, $sha, $manifest, 'https://new.example.com')));
 check('second consume is blocked', is_wp_error(mg_saoluu_migration_consume_grant($verified)));
 check('RC production mutation always blocked', is_wp_error(mg_saoluu_migration_production_gate())
