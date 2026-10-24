@@ -6,7 +6,7 @@
 
 - Focus Backup → Verify → Store → Restore; inactive Data Transfer/Deploy PHP files removed, WordPress settings preserved.
 - WordPress 7.1+, PHP 8.3+ requirements; site PHP must provide ZipArchive and OpenSSL; `mysqldump` + `mysql` CLI required.
-- Atomic non-blocking `flock` in private off-webroot storage protects simultaneous manual/scheduled work; no sleep/polling.
+- Atomic non-blocking `flock` in private off-webroot storage protects manual/scheduled backup, restore, verification, retention/delete and setup backup; no sleep/polling.
 - Core no longer ships dormant PHP SQL importer/exporter fallback.
 - WordPress asset enqueue for admin CSS/JS; README shortened.
 - Restore on production is fail-closed in RC; backup and verification may still be tested separately under authorization.

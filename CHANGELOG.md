@@ -2,7 +2,7 @@
 
 - Target WordPress 7.1+, PHP 8.3+; confirm CLI/ZipArchive/OpenSSL before install. RC explicitly blocks production restore.
 - Remove inactive Data Transfer/Deploy and unused PHP SQL fallback code from distribution; existing WordPress options kept.
-- Use nonblocking private-file `flock` to serialize UI and scheduled backup/restore, no polling.
+- Use nonblocking private-file `flock` for manual/scheduled backup, restore, catalog verification and deletion, no polling.
 - Use WordPress enqueue for admin assets; shorter README; preserve independent Recovery Kit/restore caveats.
 - Tested static/contract only; real WordPress + DBngin/cPanel restore acceptance pending.
 

@@ -42,6 +42,9 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     }
 
     if ($action === 'setup_test') {
+        $action_lock = mg_saoluu_acquire_lock();
+        if (is_wp_error($action_lock)) { $status = 'error'; $message = $action_lock->get_error_message(); return; }
+        try {
         $test = mg_saoluu_test_database_tools();
         if (is_wp_error($test)) { $status = 'error'; $message = $test->get_error_message(); $_GET['setup'] = 1; $_GET['step'] = 4; return; }
         if (isset($_POST['create_test_backup'])) {
@@ -50,6 +53,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
             mg_saoluu_log_event('setup_test_backup', 'Đã tạo bản kiểm tra', ['file' => $backup]);
         }
         $status = 'success'; $message = 'Kiểm tra đạt. Plugin có thể tạo bản sao database.'; $_GET['setup'] = 1; $_GET['step'] = 5; return;
+        } finally { mg_saoluu_release_lock($action_lock); }
     }
 
     if ($action === 'setup_finish') {
@@ -247,6 +251,9 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     }
 
     if ($action === 'toggle_protect') {
+        $action_lock = mg_saoluu_acquire_lock();
+        if (is_wp_error($action_lock)) { $status = 'error'; $message = $action_lock->get_error_message(); return; }
+        try {
         $name = basename(sanitize_file_name(wp_unslash($_POST['file_name'] ?? '')));
         if (!mg_saoluu_is_backup_filename($name)) { $status = 'error'; $message = 'Tên file không hợp lệ.'; return; }
         $metadata_file = mg_saoluu_get_backup_dir() . 'metadata.json';
@@ -255,9 +262,13 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         $metadata[$name]['protected'] = empty($metadata[$name]['protected']);
         mg_saoluu_save_metadata($metadata_file, $metadata);
         $status = 'success'; $message = $metadata[$name]['protected'] ? 'Đã giữ bản này, không tự xóa.' : 'Đã bỏ chế độ giữ bản.'; return;
+        } finally { mg_saoluu_release_lock($action_lock); }
     }
 
     if ($action === 'verify_backup') {
+        $action_lock = mg_saoluu_acquire_lock();
+        if (is_wp_error($action_lock)) { $status = 'error'; $message = $action_lock->get_error_message(); return; }
+        try {
         $name = basename(sanitize_file_name(wp_unslash($_POST['file_name'] ?? '')));
         $path = mg_saoluu_get_backup_dir() . $name;
         if (!mg_saoluu_is_backup_filename($name) || !is_readable($path)) { $status = 'error'; $message = 'Không tìm thấy bản sao.'; return; }
@@ -272,6 +283,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
             mg_saoluu_log_event('backup_verified', $message, ['file' => $name, 'state' => $result['state']]);
         }
         return;
+        } finally { mg_saoluu_release_lock($action_lock); }
     }
 
     if ($action === 'clear_log') {
@@ -317,11 +329,14 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         mg_saoluu_clear_runtime_cache();
         $result = mg_saoluu_test_database_tools();
         if (is_wp_error($result)) { $status = 'error'; $message = $result->get_error_message(); }
-        else { $status = 'success'; $message = mg_saoluu_find_binary('mysqldump') ? 'Sao lưu database bằng công cụ MySQL đã sẵn sàng.' : 'Sao lưu database bằng chế độ PHP dự phòng đã sẵn sàng.'; }
+        else { $status = 'success'; $message = 'Công cụ mysqldump đã sẵn sàng.'; }
         return;
     }
 
     if ($action === 'delete') {
+        $action_lock = mg_saoluu_acquire_lock();
+        if (is_wp_error($action_lock)) { $status = 'error'; $message = $action_lock->get_error_message(); return; }
+        try {
         $name = basename(sanitize_file_name(wp_unslash($_POST['file_name'] ?? '')));
         if (!mg_saoluu_is_backup_filename($name)) { $status = 'error'; $message = 'Tên file không hợp lệ.'; return; }
         $metadata_file = mg_saoluu_get_backup_dir() . 'metadata.json';
@@ -340,6 +355,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         unset($metadata[$name]); mg_saoluu_save_metadata($metadata_file, $metadata);
         mg_saoluu_log_event('delete', 'Xóa bản sao', ['file' => $name]);
         $status = 'success'; $message = 'Đã xóa bản sao lưu.'; return;
+        } finally { mg_saoluu_release_lock($action_lock); }
     }
 
     $lock = mg_saoluu_acquire_lock();
