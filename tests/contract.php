@@ -82,6 +82,29 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
 
+// Regression: the Overview diagnostic card cannot reuse RC4's unversioned status after RC6 upgrade.
+function register_activation_hook($file, $callback) {}
+function register_deactivation_hook($file, $callback) {}
+define('MG_SAOLUU_FILE', MG_SAOLUU_DIR . 'mg-saoluu.php');
+require_once $base . 'lifecycle.php';
+$legacy_cache = ['plugin_integrity' => ['ok' => true, 'detail' => 'Đầy đủ · v1.2.1-rc4']];
+set_transient('mg_saoluu_system_checks', $legacy_cache, 120);
+$versioned_cache_key = mg_saoluu_system_checks_cache_key();
+test('system status uses a version-scoped cache key',
+    $versioned_cache_key !== 'mg_saoluu_system_checks'
+    && str_contains($versioned_cache_key, 'rc6')
+    && get_transient($versioned_cache_key) === false);
+$lifecycle_source = file_get_contents(MG_SAOLUU_DIR . 'includes/lifecycle.php');
+test('Overview uses only the versioned status cache',
+    str_contains($lifecycle_source, 'get_transient($cache_key)')
+    && str_contains($lifecycle_source, 'set_transient($cache_key, $checks'));
+set_transient($versioned_cache_key, $legacy_cache, 120);
+mg_saoluu_clear_runtime_cache();
+test('cache invalidation removes legacy and active version entries',
+    get_transient('mg_saoluu_system_checks') === false
+    && get_transient($versioned_cache_key) === false);
+
+
 // Storage isolation: multiple filesystem paths including symlinks.
 $external=mg_saoluu_get_backup_dir();
 test('storage default outside docroot',mg_saoluu_storage_path_safe($external)&&is_dir($external));
