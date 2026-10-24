@@ -32,6 +32,13 @@ $plugin = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '
 require_once $plugin . '/includes/environment.php';
 require_once $plugin . '/includes/security.php';
 require_once $plugin . '/includes/migration.php';
+require_once $plugin . '/includes/restore.php';
+check('ordinary production restore does not rewrite URL',
+    mg_saoluu_restore_should_change_url(true, 'production', null) === false);
+check('signed migration rewrites domain on production',
+    mg_saoluu_restore_should_change_url(true, 'production', ['nonce' => 'verified']) === true);
+check('disable URL checkbox always prevents rewriting',
+    mg_saoluu_restore_should_change_url(false, 'production', ['nonce' => 'verified']) === false);
 
 $_SERVER['HTTP_HOST'] = 'new.example.com';
 check('canonical host from WordPress settings', mg_saoluu_host() === 'new.example.com');
