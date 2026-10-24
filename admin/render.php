@@ -272,7 +272,7 @@ function mg_saoluu_render_page() {
             <?php if ($env === 'local'): ?>
             <section class="mgsl-card">
                 <h2 class="mgsl-title">Chuyển Local → Website mới</h2>
-                <p>Chỉ dành cho WordPress đích mới, chưa có dữ liệu/đơn hàng. RC3 vẫn khóa mọi ghi Production thật; flow này dùng để chuẩn bị và QA trên Staging cô lập.</p>
+                <p>Chỉ dành cho WordPress đích mới, chưa có dữ liệu/đơn hàng. RC5 vẫn khóa mọi ghi Production thật; flow này dùng để chuẩn bị và QA trên Staging cô lập.</p>
                 <form method="post"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
                     <input type="hidden" name="mg_action" value="backup"><input type="hidden" name="backup_type" value="local_copy">
                     <input type="hidden" name="migration_mode" value="1"><input type="hidden" name="encrypt_backup" value="1"><input type="hidden" name="return_tab" value="backup">
@@ -358,7 +358,7 @@ function mg_saoluu_render_page() {
                 <h2 class="mgsl-title">Local → Website mới</h2>
                 <?php $migration_gate = mg_saoluu_migration_production_gate(); $migration_ready = !is_wp_error($migration_gate); ?>
                 <?php if (!$migration_ready): ?>
-                    <div class="mgsl-note mgsl-warning"><?php echo esc_html($migration_gate->get_error_message()); ?> RC3 không tự mở ghi Production.</div>
+                    <div class="mgsl-note mgsl-warning"><?php echo esc_html($migration_gate->get_error_message()); ?> RC5 không tự mở ghi Production.</div>
                 <?php else: ?>
                     <p>Staging QA đã qua gate cơ bản. Chỉ dùng clone đích trắng, DB riêng và external I/O đã cách ly.</p>
                     <form method="post" enctype="multipart/form-data"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
