@@ -110,6 +110,27 @@ function mg_saoluu_read_backup_manifest($path, $password = '') {
     return $manifest;
 }
 
+/**
+ * Never overwrite the plugin code that is currently executing a restore.
+ * The backup may still contain MG Sao Luu for offline disaster recovery, but
+ * runtime restore/rollback leaves the installed engine untouched.
+ */
+function mg_saoluu_runtime_plugin_relative_prefix($runtime_dir = null) {
+    $root = trailingslashit(wp_normalize_path(ABSPATH));
+    $dir = trailingslashit(wp_normalize_path($runtime_dir === null ? MG_SAOLUU_DIR : $runtime_dir));
+    if ($dir === $root || strpos($dir, $root) !== 0) return '';
+    $relative = trim(substr($dir, strlen($root)), '/');
+    if ($relative === '' || !mg_saoluu_is_safe_zip_entry($relative . '/self-check.php')) return '';
+    return trailingslashit($relative);
+}
+
+function mg_saoluu_is_runtime_self_path($relative, $runtime_dir = null) {
+    $relative = ltrim(str_replace('\\', '/', (string) $relative), '/');
+    $prefix = mg_saoluu_runtime_plugin_relative_prefix($runtime_dir);
+    if ($prefix === '') return false;
+    return $relative === rtrim($prefix, '/') || strpos($relative, $prefix) === 0;
+}
+
 function mg_saoluu_extract_to_stage($zip_file, $stage_dir, $include_files) {
     $zip = new ZipArchive();
     if ($zip->open($zip_file) !== true) return new WP_Error('zip_open_failed', 'Không thể mở ZIP.');
@@ -120,6 +141,7 @@ function mg_saoluu_extract_to_stage($zip_file, $stage_dir, $include_files) {
         if (mg_saoluu_zip_entry_is_symlink($zip, $i)) { $zip->close(); return new WP_Error('unsafe_symlink', 'ZIP chứa symbolic link không được phép: ' . $name); }
         if (!mg_saoluu_is_safe_zip_entry($name)) { $zip->close(); return new WP_Error('unsafe_entry', 'ZIP chứa đường dẫn không an toàn: ' . $name); }
         if (!$include_files && !in_array($name, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+        if ($include_files && mg_saoluu_is_runtime_self_path($name)) continue;
         if ($include_files && $name !== 'database_backup.sql' && $name !== 'mg-backup-manifest.json' && mg_saoluu_is_excluded_path($name, 'safe_full')) continue;
         if (substr($name, -1) === '/') { if (!wp_mkdir_p($stage_dir . $name)) { $zip->close(); return new WP_Error('stage_mkdir_failed', 'Không thể tạo thư mục tạm.'); } continue; }
         $dest = $stage_dir . $name;
@@ -143,6 +165,7 @@ function mg_saoluu_copy_stage_files($stage_dir, $backup_type) {
             $path = wp_normalize_path($file->getPathname());
             $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+            if (mg_saoluu_is_runtime_self_path($relative)) continue;
             if (mg_saoluu_is_excluded_path($relative, $backup_type === 'local_copy' ? 'local_copy' : 'safe_full')) continue;
             $guard = mg_saoluu_restore_destination_check($relative);
             if (is_wp_error($guard)) return $guard;
@@ -549,6 +572,7 @@ function mg_saoluu_validate_restore_destinations($stage_dir, $backup_type) {
             $path = wp_normalize_path($file->getPathname());
             $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+            if (mg_saoluu_is_runtime_self_path($relative)) continue;
             if (mg_saoluu_is_excluded_path($relative, $backup_type === 'local_copy' ? 'local_copy' : 'safe_full')) continue;
             $guard = mg_saoluu_restore_destination_check($relative);
             if (is_wp_error($guard)) return $guard;
@@ -568,6 +592,7 @@ function mg_saoluu_stage_new_files($stage_dir) {
             $path = wp_normalize_path($file->getPathname());
             $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+            if (mg_saoluu_is_runtime_self_path($relative)) continue;
             $guard = mg_saoluu_restore_destination_check($relative);
             if (is_wp_error($guard)) return $guard;
             if (!$guard['exists']) $new[] = $relative;
@@ -582,7 +607,7 @@ function mg_saoluu_remove_new_restore_files($relative_files, $unlink = null) {
     foreach ((array) $relative_files as $relative) {
         $result['requested']++;
         $relative = ltrim(str_replace('\\', '/', (string) $relative), '/');
-        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_excluded_path($relative, 'safe_full')) {
+        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_runtime_self_path($relative) || mg_saoluu_is_excluded_path($relative, 'safe_full')) {
             $result['failed']++;
             continue;
         }
