@@ -1,3 +1,28 @@
+## 1.2.1-rc9 — Restore engine self-protection (2026-10-24)
+
+- Full backup archives continue to include MG Sao Luu for offline recovery completeness.
+- Runtime Restore/Rollback now skips the currently executing MG Sao Luu plugin directory during extraction, copy, new-file bookkeeping and cleanup, preventing an older backup from downgrading the active restore engine mid-transaction.
+- UI explicitly documents that the running restore engine is preserved and must be restored separately from a trusted release ZIP if needed.
+- Add regression coverage proving an archived RC7-style plugin payload cannot overwrite or delete an RC9 runtime plugin.
+- RC8 transactional rollback and timezone fixes are retained; production restore remains blocked for RC builds.
+
+## 1.2.1-rc8 — Transactional rollback remediation (2026-10-24)
+
+- Require a healthy current target before minting the pre-restore rollback checkpoint; a DB that references a missing active theme fails closed before any restore write.
+- An explicit rollback is recorded as `rolled_back` only after the checkpoint DB/files, restore health check and original new-file cleanup all succeed.
+- If an explicit rollback fails but its guard backup restores successfully, preserve the original completed-restore journal/checkpoint and record `rollback_attempt_status=failed_reverted`; never report a false rollback success.
+- Persist epoch timestamps for new restore transactions and compute legacy wall-clock durations in the WordPress timezone, fixing the UTC+7 +25,200-second UI error.
+- Add regression coverage for unhealthy rollback baselines, truthful rollback recovery, cleanup evidence and duration math.
+- Runtime re-acceptance on an isolated clone is required before merge or production restore.
+
+## 1.2.1-rc7 — Cron observability & honest offsite status (2026-10-24)
+
+- Track the last real SQL/full backup attempt and locally verified success separately from Google Drive upload status, without storing secrets or filenames.
+- Flag missing/late cron events and overdue backups in Overview without polling or starting a job when the dashboard loads.
+- An uploaded-but-not-downloaded Drive archive is explicitly unverified; a Drive failure is not reported as full offsite success.
+- Add deterministic PHP regression tests for the schedule outcomes on source and extracted ZIP; production restore remains hard-blocked.
+- Pending CI on exact SHA and Agent Local WordPress/DB acceptance; no stable release implied.
+
 ## 1.2.1-rc6 — Backup/restore UI and failure safety (2026-10-24)
 
 - Prevent duplicate operations and show honest pending feedback; expose PHP upload limits and checkpoint/journal status.

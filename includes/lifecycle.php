@@ -161,36 +161,66 @@ function mg_saoluu_add_weekly_schedule($schedules) {
     return $schedules;
 }
 
+/**
+ * Cron is event-driven. A locally verified backup and an unverified Drive upload
+ * must never be reported as a single fully successful offsite recovery.
+ */
+function mg_saoluu_run_scheduled_backup($type) {
+    $choices = [
+        'sql' => ['setting' => 'mg_saoluu_auto_sql', 'note' => 'Tự động hằng ngày'],
+        'safe_full' => ['setting' => 'mg_saoluu_auto_full', 'note' => 'Tự động hằng tuần'],
+    ];
+    if (!isset($choices[$type])) return;
+    $config = $choices[$type];
+    if (get_option($config['setting'], '0') !== '1') return;
+
+    $lock = mg_saoluu_acquire_lock();
+    if (is_wp_error($lock)) {
+        mg_saoluu_schedule_health_record($type, $lock);
+        mg_saoluu_log_event('cron_backup_locked', 'Đã bỏ qua lượt trùng khi có tác vụ khác.', [
+            'type' => $type, 'code' => $lock->get_error_code(),
+        ]);
+        return;
+    }
+
+    try {
+        $result = mg_saoluu_create_backup($type, $config['note'], 'backup_auto', true, [
+            'purpose' => 'scheduled',
+            'encrypt' => true,
+            'use_default_encryption' => true,
+            'upload_drive' => null,
+        ]);
+    } catch (Throwable $e) {
+        // Keep exception details out of audit logs: messages may contain paths.
+        $result = new WP_Error('cron_exception', 'Tác vụ sao lưu gặp lỗi không mong muốn.');
+    } finally {
+        mg_saoluu_release_lock($lock);
+    }
+
+    $health = mg_saoluu_schedule_health_record(
+        $type, $result, get_option('mg_saoluu_drive_auto_upload', '0') === '1'
+    );
+    if (is_wp_error($result)) {
+        mg_saoluu_log_event('cron_backup_failed', 'Sao lưu tự động thất bại.', [
+            'type' => $type, 'code' => $result->get_error_code(),
+        ]);
+    } elseif (is_array($health) && $health['last_result'] === 'offsite_failed') {
+        mg_saoluu_log_event('cron_offsite_failed', 'Backup host thành công nhưng upload Drive thất bại.', ['type' => $type]);
+    } elseif (is_array($health) && $health['last_result'] === 'offsite_unverified') {
+        mg_saoluu_log_event('cron_offsite_unverified', 'Backup host và upload Drive xong; tải lại chưa kiểm chứng.', ['type' => $type]);
+    } else {
+        mg_saoluu_log_event('cron_backup_success', 'Backup host hoàn tất và đã xác minh.', ['type' => $type]);
+    }
+}
+
 add_action('mg_saoluu_cron_daily', 'mg_saoluu_run_daily_backup');
 function mg_saoluu_run_daily_backup() {
-    if (get_option('mg_saoluu_auto_sql', '0') !== '1') return;
-    $lock = mg_saoluu_acquire_lock();
-    if (is_wp_error($lock)) { mg_saoluu_log_event('cron_backup_locked', $lock->get_error_message()); return; }
-    try {
-    $result = mg_saoluu_create_backup('sql', 'Tự động hằng ngày', 'backup_auto', true, [
-        'purpose' => 'scheduled',
-        'encrypt' => true,
-        'use_default_encryption' => true,
-        'upload_drive' => null,
-    ]);
-    } finally { mg_saoluu_release_lock($lock); }
-    mg_saoluu_log_event(is_wp_error($result) ? 'cron_backup_failed' : 'cron_backup_success', is_wp_error($result) ? $result->get_error_message() : (string) $result);
+    mg_saoluu_run_scheduled_backup('sql');
 }
 
 add_action('mg_saoluu_cron_weekly', 'mg_saoluu_run_weekly_backup');
 function mg_saoluu_run_weekly_backup() {
-    if (get_option('mg_saoluu_auto_full', '0') !== '1') return;
-    $lock = mg_saoluu_acquire_lock();
-    if (is_wp_error($lock)) { mg_saoluu_log_event('cron_backup_locked', $lock->get_error_message()); return; }
-    try {
-    $result = mg_saoluu_create_backup('safe_full', 'Tự động hằng tuần', 'backup_auto', true, [
-        'purpose' => 'scheduled',
-        'encrypt' => true,
-        'use_default_encryption' => true,
-        'upload_drive' => null,
-    ]);
-    } finally { mg_saoluu_release_lock($lock); }
-    mg_saoluu_log_event(is_wp_error($result) ? 'cron_backup_failed' : 'cron_backup_success', is_wp_error($result) ? $result->get_error_message() : (string) $result);
+    mg_saoluu_run_scheduled_backup('safe_full');
 }
 
 function mg_saoluu_reschedule_cron() {

@@ -110,6 +110,30 @@ function mg_saoluu_read_backup_manifest($path, $password = '') {
     return $manifest;
 }
 
+/**
+ * Never overwrite the plugin code that is currently executing a restore.
+ * The backup may still contain MG Sao Luu for offline disaster recovery, but
+ * runtime restore/rollback leaves the installed engine untouched.
+ */
+function mg_saoluu_runtime_plugin_relative_prefix($runtime_dir = null) {
+    $root = trailingslashit(wp_normalize_path(ABSPATH));
+    $runtime = $runtime_dir === null
+        ? (defined('MG_SAOLUU_FILE') ? dirname(MG_SAOLUU_FILE) : MG_SAOLUU_DIR)
+        : $runtime_dir;
+    $dir = trailingslashit(wp_normalize_path($runtime));
+    if ($dir === $root || strpos($dir, $root) !== 0) return '';
+    $relative = trim(substr($dir, strlen($root)), '/');
+    if ($relative === '' || !mg_saoluu_is_safe_zip_entry($relative . '/self-check.php')) return '';
+    return trailingslashit($relative);
+}
+
+function mg_saoluu_is_runtime_self_path($relative, $runtime_dir = null) {
+    $relative = ltrim(str_replace('\\', '/', (string) $relative), '/');
+    $prefix = mg_saoluu_runtime_plugin_relative_prefix($runtime_dir);
+    if ($prefix === '') return false;
+    return $relative === rtrim($prefix, '/') || strpos($relative, $prefix) === 0;
+}
+
 function mg_saoluu_extract_to_stage($zip_file, $stage_dir, $include_files) {
     $zip = new ZipArchive();
     if ($zip->open($zip_file) !== true) return new WP_Error('zip_open_failed', 'Không thể mở ZIP.');
@@ -120,6 +144,7 @@ function mg_saoluu_extract_to_stage($zip_file, $stage_dir, $include_files) {
         if (mg_saoluu_zip_entry_is_symlink($zip, $i)) { $zip->close(); return new WP_Error('unsafe_symlink', 'ZIP chứa symbolic link không được phép: ' . $name); }
         if (!mg_saoluu_is_safe_zip_entry($name)) { $zip->close(); return new WP_Error('unsafe_entry', 'ZIP chứa đường dẫn không an toàn: ' . $name); }
         if (!$include_files && !in_array($name, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+        if ($include_files && mg_saoluu_is_runtime_self_path($name)) continue;
         if ($include_files && $name !== 'database_backup.sql' && $name !== 'mg-backup-manifest.json' && mg_saoluu_is_excluded_path($name, 'safe_full')) continue;
         if (substr($name, -1) === '/') { if (!wp_mkdir_p($stage_dir . $name)) { $zip->close(); return new WP_Error('stage_mkdir_failed', 'Không thể tạo thư mục tạm.'); } continue; }
         $dest = $stage_dir . $name;
@@ -143,6 +168,7 @@ function mg_saoluu_copy_stage_files($stage_dir, $backup_type) {
             $path = wp_normalize_path($file->getPathname());
             $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+            if (mg_saoluu_is_runtime_self_path($relative)) continue;
             if (mg_saoluu_is_excluded_path($relative, $backup_type === 'local_copy' ? 'local_copy' : 'safe_full')) continue;
             $guard = mg_saoluu_restore_destination_check($relative);
             if (is_wp_error($guard)) return $guard;
@@ -453,6 +479,56 @@ function mg_saoluu_restore_journal_unfinished($journal) {
     return !in_array((string) ($journal['status'] ?? ''), ['completed', 'rolled_back'], true);
 }
 
+
+/**
+ * Measure a restore transaction without mixing WordPress-local timestamps with
+ * the PHP/server timezone. New journals use epoch seconds; old RC7 journals
+ * fall back to parsing both wall-clock values in the WordPress timezone.
+ */
+function mg_saoluu_restore_duration_seconds($journal) {
+    if (!is_array($journal)) return null;
+    $start = max(0, (int) ($journal['started_at_epoch'] ?? 0));
+    $finish = 0;
+    foreach (['completed_at_epoch', 'rolled_back_at_epoch'] as $key) {
+        $candidate = max(0, (int) ($journal[$key] ?? 0));
+        if ($candidate > 0) { $finish = $candidate; break; }
+    }
+    if ($start > 0 && $finish >= $start) return $finish - $start;
+
+    $start_text = (string) ($journal['started_at'] ?? '');
+    $finish_text = (string) (($journal['completed_at'] ?? '') ?: ($journal['rolled_back_at'] ?? ''));
+    if ($start_text === '' || $finish_text === '') return null;
+    try {
+        $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
+        $start_dt = new DateTimeImmutable($start_text, $timezone);
+        $finish_dt = new DateTimeImmutable($finish_text, $timezone);
+        $seconds = $finish_dt->getTimestamp() - $start_dt->getTimestamp();
+        return $seconds >= 0 ? $seconds : null;
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
+/**
+ * If an explicit rollback checkpoint itself cannot be applied, but the safety
+ * backup made immediately before that attempt restores successfully, preserve
+ * the ORIGINAL completed-restore journal. This keeps the original checkpoint
+ * and new-file list available for a later retry and never claims "rolled_back".
+ */
+function mg_saoluu_rollback_attempt_reverted_journal($previous_journal, $checkpoint, $guard_backup, $attempt_started_epoch = 0) {
+    $journal = is_array($previous_journal) ? $previous_journal : [];
+    $journal['status'] = 'completed';
+    $journal['rollback_attempt_status'] = 'failed_reverted';
+    $journal['rollback_attempt_checkpoint'] = basename((string) $checkpoint);
+    $journal['rollback_attempt_guard_backup'] = basename((string) $guard_backup);
+    $journal['rollback_attempt_at'] = current_time('mysql');
+    $journal['rollback_attempt_at_epoch'] = time();
+    $journal['rollback_attempt_duration_seconds'] = $attempt_started_epoch > 0
+        ? max(0, time() - (int) $attempt_started_epoch)
+        : null;
+    return $journal;
+}
+
 function mg_saoluu_restore_destination_check($relative) {
     $relative = ltrim(str_replace('\\', '/', (string) $relative), '/');
     if (!mg_saoluu_is_safe_zip_entry($relative)) return new WP_Error('restore_destination_unsafe', 'Đích file không an toàn; đã dừng.');
@@ -499,6 +575,7 @@ function mg_saoluu_validate_restore_destinations($stage_dir, $backup_type) {
             $path = wp_normalize_path($file->getPathname());
             $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+            if (mg_saoluu_is_runtime_self_path($relative)) continue;
             if (mg_saoluu_is_excluded_path($relative, $backup_type === 'local_copy' ? 'local_copy' : 'safe_full')) continue;
             $guard = mg_saoluu_restore_destination_check($relative);
             if (is_wp_error($guard)) return $guard;
@@ -518,6 +595,7 @@ function mg_saoluu_stage_new_files($stage_dir) {
             $path = wp_normalize_path($file->getPathname());
             $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+            if (mg_saoluu_is_runtime_self_path($relative)) continue;
             $guard = mg_saoluu_restore_destination_check($relative);
             if (is_wp_error($guard)) return $guard;
             if (!$guard['exists']) $new[] = $relative;
@@ -532,7 +610,7 @@ function mg_saoluu_remove_new_restore_files($relative_files, $unlink = null) {
     foreach ((array) $relative_files as $relative) {
         $result['requested']++;
         $relative = ltrim(str_replace('\\', '/', (string) $relative), '/');
-        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_excluded_path($relative, 'safe_full')) {
+        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_runtime_self_path($relative) || mg_saoluu_is_excluded_path($relative, 'safe_full')) {
             $result['failed']++;
             continue;
         }
@@ -690,6 +768,22 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         }
     }
     $type = sanitize_key($manifest['backup_type'] ?? 'sql');
+
+    // A rollback promise is only valid when the CURRENT target is internally
+    // healthy. RC7 allowed a checkpoint whose DB referenced a missing theme;
+    // such a checkpoint cannot safely return the site to its prior state.
+    $target_home = home_url('/');
+    $target_site = site_url('/');
+    $baseline_health = mg_saoluu_restore_health_check($target_home);
+    if (is_wp_error($baseline_health)) {
+        if ($prepared['temporary']) @unlink($zip_file);
+        return new WP_Error(
+            'restore_baseline_unhealthy',
+            'Đã dừng trước khi ghi dữ liệu vì trạng thái hiện tại không đủ an toàn để tạo checkpoint rollback: ' .
+            $baseline_health->get_error_message()
+        );
+    }
+
     $checkpoint = mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore_files);
     if (is_wp_error($checkpoint)) {
         if ($prepared['temporary']) @unlink($zip_file);
@@ -726,11 +820,26 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         if (is_wp_error($destinations)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $destinations; }
     }
 
-    $target_home = home_url('/'); $target_site = site_url('/');
     $target_settings = mg_saoluu_capture_target_settings();
     $source_home = (string) ($manifest['source_url'] ?? '');
     $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
-    $journal = ['status' => 'running', 'source' => basename($backup_file), 'pre_backup' => $pre, 'pre_backup_sha256' => strtolower($pre_hash), 'restore_files' => (bool) $restore_files, 'new_file_count' => count($new_files), 'new_files' => $new_files, 'started_at' => current_time('mysql')];
+    $journal = [
+        'status' => 'running',
+        'operation' => $rollback_restore ? 'rollback' : 'restore',
+        'source' => basename($backup_file),
+        'pre_backup' => $pre,
+        'pre_backup_sha256' => strtolower($pre_hash),
+        'restore_files' => (bool) $restore_files,
+        'new_file_count' => count($new_files),
+        'new_files' => $new_files,
+        'started_at' => current_time('mysql'),
+        'started_at_epoch' => time(),
+    ];
+    if ($rollback_restore) {
+        $journal['rollback_checkpoint'] = basename($backup_file);
+        $journal['rollback_original_checkpoint'] = basename((string) ($previous_journal['pre_backup'] ?? ''));
+        $journal['rollback_original_new_file_count'] = count((array) ($previous_journal['new_files'] ?? []));
+    }
     $journal_saved = mg_saoluu_restore_journal($journal);
     if (is_wp_error($journal_saved)) {
         mg_saoluu_remove_tree($stage);
@@ -783,18 +892,51 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
             $journal['rollback_removed_new_file_count'] = $cleanup['removed'];
             if ($cleanup['failed'] > 0) throw new RuntimeException('Không thể hoàn tất dọn file của bản quay lại.');
         }
-        $journal['status'] = 'completed';
-        $journal['completed_at'] = current_time('mysql');
+        if ($rollback_restore) {
+            $journal['status'] = 'rolled_back';
+            $journal['rolled_back_at'] = current_time('mysql');
+            $journal['rolled_back_at_epoch'] = time();
+            $journal['rollback_attempt_status'] = 'succeeded';
+            mg_saoluu_debug_log('restore_rollback_complete', [
+                'type' => $type,
+                'cleanup_requested' => (int) ($journal['rollback_file_cleanup']['requested'] ?? 0),
+                'cleanup_removed' => (int) ($journal['rollback_file_cleanup']['removed'] ?? 0),
+            ]);
+        } else {
+            $journal['status'] = 'completed';
+            $journal['completed_at'] = current_time('mysql');
+            $journal['completed_at_epoch'] = time();
+            mg_saoluu_debug_log('restore_complete',['type'=>$type]);
+        }
         $journal_saved = mg_saoluu_restore_journal($journal);
         if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
-        mg_saoluu_debug_log('restore_complete',['type'=>$type]);
     } catch (Throwable $e) {
         $error = new WP_Error('restore_failed', $e->getMessage());
         $journal['status'] = 'rolling_back'; $journal['error'] = sanitize_text_field($e->getMessage()); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_rollback_started',['type'=>$type]);
         $rollback = mg_saoluu_rollback_from_backup($pre_path, $restore_files, $rollback_password, $target_settings);
         if (is_wp_error($rollback)) {
-            $journal['status'] = 'rollback_failed'; $journal['rollback_error'] = $rollback->get_error_message(); mg_saoluu_restore_journal($journal);
+            $journal['status'] = 'rollback_failed';
+            $journal['rollback_error'] = $rollback->get_error_message();
+            mg_saoluu_restore_journal($journal);
             $error = new WP_Error('rollback_failed', 'Khôi phục lỗi và tự quay lại cũng lỗi: ' . $rollback->get_error_message() . '. Bản dự phòng: ' . $pre);
+        } elseif ($rollback_restore) {
+            // The requested rollback checkpoint FAILED. The safety backup only
+            // returned us to the state that existed before this rollback try.
+            // Preserve the original completed restore journal and its checkpoint.
+            $journal = mg_saoluu_rollback_attempt_reverted_journal(
+                $previous_journal,
+                $backup_file,
+                $pre,
+                (int) ($journal['started_at_epoch'] ?? 0)
+            );
+            $rollback_record = mg_saoluu_restore_journal($journal);
+            $error = is_wp_error($rollback_record)
+                ? new WP_Error('rollback_journal_failed', 'Lần thử rollback thất bại; dữ liệu đã trở lại trạng thái trước lần thử nhưng không ghi được nhật ký.')
+                : new WP_Error('rollback_attempt_failed_reverted', 'Không áp dụng được checkpoint rollback; plugin đã phục hồi lại trạng thái trước lần thử. Checkpoint gốc vẫn được giữ để kiểm tra và thử lại.');
+            mg_saoluu_debug_log('restore_rollback_attempt_reverted', [
+                'type' => $type,
+                'code' => 'rollback_attempt_failed_reverted',
+            ]);
         } else {
             $cleanup = mg_saoluu_remove_new_restore_files($new_files);
             $journal['rollback_file_cleanup'] = $cleanup;
@@ -804,12 +946,14 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
                 mg_saoluu_restore_journal($journal);
                 $error = new WP_Error('rollback_failed', 'Khôi phục lỗi; database đã quay lại nhưng không thể dọn hết file phát sinh. Bản dự phòng: ' . $pre);
             } else {
-            $journal['status'] = 'rolled_back'; $journal['rolled_back_at'] = current_time('mysql');
-            $rollback_record = mg_saoluu_restore_journal($journal);
-            $error = is_wp_error($rollback_record)
-                ? new WP_Error('rollback_journal_failed', 'Đã quay lại dữ liệu nhưng không ghi được nhật ký; phải kiểm tra thủ công.')
-                : new WP_Error('restore_rolled_back', 'Khôi phục không thành công nên plugin đã tự quay lại trạng thái trước đó. Lỗi ban đầu: ' . $e->getMessage());
-            mg_saoluu_log_event('restore_rolled_back', $e->getMessage(), ['pre_backup' => $pre]);
+                $journal['status'] = 'rolled_back';
+                $journal['rolled_back_at'] = current_time('mysql');
+                $journal['rolled_back_at_epoch'] = time();
+                $rollback_record = mg_saoluu_restore_journal($journal);
+                $error = is_wp_error($rollback_record)
+                    ? new WP_Error('rollback_journal_failed', 'Đã quay lại dữ liệu nhưng không ghi được nhật ký; phải kiểm tra thủ công.')
+                    : new WP_Error('restore_rolled_back', 'Khôi phục không thành công nên plugin đã tự quay lại trạng thái trước đó. Lỗi ban đầu: ' . $e->getMessage());
+                mg_saoluu_log_event('restore_rolled_back', $e->getMessage(), ['pre_backup' => $pre]);
             }
         }
     } finally {
@@ -828,7 +972,13 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         if ($prepared['temporary']) @unlink($zip_file);
     }
     if ($error) return $error;
-    return ['pre_backup' => $pre, 'manifest' => $manifest, 'replace' => $replace_report];
+    return [
+        'pre_backup' => $pre,
+        'manifest' => $manifest,
+        'replace' => $replace_report,
+        'operation' => $rollback_restore ? 'rollback' : 'restore',
+        'rollback_checkpoint' => $rollback_restore ? basename($backup_file) : '',
+    ];
 }
 
 function mg_saoluu_migrate_legacy_backups() {

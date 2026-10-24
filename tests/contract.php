@@ -39,6 +39,7 @@ function delete_transient($key){unset($GLOBALS['test_transients'][$key]);}
 function wp_json_encode($v,$options=0){return json_encode($v,$options);}
 function size_format($bytes){return (string) $bytes;}
 function current_time($type='mysql'){return '2026-10-24 12:00:00';}
+function wp_timezone(){return new DateTimeZone('Asia/Bangkok');}
 function home_url($p='/'){return 'https://motgu.com'.(str_starts_with($p,'/')?'':'/').$p;}
 function get_post_meta($id,$key,$single=false){return $id === 2?'12345678-1234-4234-a234-123456789abc':'';}
 function get_term_meta($id,$key,$single=false){return '';}
@@ -57,7 +58,8 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.2.1-rc6');
+define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
+define('MG_SAOLUU_VERSION', '1.2.1-rc9');
 function add_action(){}
 function mg_saoluu_environment(){return 'local';}
 function mg_saoluu_is_local_environment(){return true;}
@@ -138,6 +140,47 @@ $ordinary_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
 test('ordinary restore destination passes', $ordinary_copy === true && file_get_contents($restore_target_dir . '/ordinary.txt') === 'ordinary-content');
 @unlink($restore_target_dir . '/ordinary.txt');
 
+// A full backup may contain an older MG Sao Luu copy, but restore must never
+// overwrite the plugin code currently executing the transaction.
+$self_runtime = dirname(MG_SAOLUU_FILE);
+wp_mkdir_p($self_runtime . '/includes');
+file_put_contents(MG_SAOLUU_FILE, 'RC9-ACTIVE');
+file_put_contents($self_runtime . '/includes/runtime.php', 'RC9-INCLUDES-ACTIVE');
+wp_mkdir_p($restore_stage . '/wp-content/plugins/mg-saoluu/includes');
+file_put_contents($restore_stage . '/wp-content/plugins/mg-saoluu/mg-saoluu.php', 'RC7-ARCHIVED');
+file_put_contents($restore_stage . '/wp-content/plugins/mg-saoluu/includes/runtime.php', 'RC7-ARCHIVED-INCLUDE');
+file_put_contents($restore_stage . '/wp-content/plugins/mg-saoluu/includes/legacy-only.php', 'OLD-ONLY');
+$self_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+test('runtime plugin files are skipped during stage copy',
+    $self_copy === true
+    && file_get_contents(MG_SAOLUU_FILE) === 'RC9-ACTIVE'
+    && file_get_contents($self_runtime . '/includes/runtime.php') === 'RC9-INCLUDES-ACTIVE'
+    && !file_exists($self_runtime . '/includes/legacy-only.php'));
+$self_new = mg_saoluu_stage_new_files($restore_stage);
+test('runtime plugin paths are excluded from rollback new-file bookkeeping',
+    is_array($self_new)
+    && !in_array('wp-content/plugins/mg-saoluu/includes/legacy-only.php', $self_new, true));
+$self_cleanup = mg_saoluu_remove_new_restore_files(['wp-content/plugins/mg-saoluu/mg-saoluu.php']);
+test('rollback cleanup refuses to delete the running plugin',
+    $self_cleanup['requested'] === 1 && $self_cleanup['failed'] === 1
+    && file_get_contents(MG_SAOLUU_FILE) === 'RC9-ACTIVE');
+
+// Extraction also skips the running plugin before it can reach the staged tree.
+$self_zip = $root . '/self-protection.zip';
+$self_extract_stage = $root . '/self-extract/';
+wp_mkdir_p($self_extract_stage);
+$z = new ZipArchive();
+$z->open($self_zip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+$z->addFromString('database_backup.sql', 'CREATE TABLE fixture (id INT);');
+$z->addFromString('wp-content/plugins/mg-saoluu/mg-saoluu.php', 'RC7-ZIP');
+$z->addFromString('wp-content/uploads/keep.txt', 'ordinary');
+$z->close();
+$self_extract = mg_saoluu_extract_to_stage($self_zip, $self_extract_stage, true);
+test('restore extraction excludes archived copy of running plugin',
+    $self_extract === true
+    && !file_exists($self_extract_stage . 'wp-content/plugins/mg-saoluu/mg-saoluu.php')
+    && file_get_contents($self_extract_stage . 'wp-content/uploads/keep.txt') === 'ordinary');
+
 $leaf_link = $restore_target_dir . '/leaf-link.txt';
 file_put_contents($restore_stage . '/wp-content/uploads/leaf-link.txt', 'must-not-follow-leaf-link');
 symlink($outside_sentinel, $leaf_link);
@@ -206,6 +249,25 @@ test('maintenance symlink cannot overwrite outside sentinel',
     is_wp_error($maintenance_link_error) && $maintenance_link_error->get_error_code() === 'restore_destination_symlink'
     && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
 @unlink(ABSPATH . '.maintenance');
+
+// Restore baseline must be internally healthy BEFORE a rollback checkpoint can
+// be trusted. A DB pointing to a missing active theme is not a safe baseline.
+class FixtureHealthDB {
+ public $options='wp_options';
+ public function prepare($q,$arg){return $q;}
+ public function get_var($q){return 'wp_options';}
+}
+$wpdb = new FixtureHealthDB();
+$GLOBALS['test_options']['home']='https://motgu.com/';
+$GLOBALS['test_options']['siteurl']='https://motgu.com/';
+$GLOBALS['test_options']['stylesheet']='twentytwentyfive';
+$unhealthy = mg_saoluu_restore_health_check('https://motgu.com/');
+test('restore health rejects missing active theme before checkpoint',
+    is_wp_error($unhealthy) && $unhealthy->get_error_code()==='restore_health');
+wp_mkdir_p(WP_CONTENT_DIR . '/themes/twentytwentyfive');
+test('restore health accepts present active theme',
+    mg_saoluu_restore_health_check('https://motgu.com/')===true);
+$GLOBALS['test_options']['stylesheet']='';
 
 test('debug enabled on clone',mg_saoluu_debug_enabled()===true);
 test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
@@ -287,6 +349,46 @@ test('interrupted restore blocks another restore before SQL import',
     is_wp_error($blocked_restore) && $blocked_restore->get_error_code() === 'restore_unfinished');
 test('unknown journal status blocks future restore', mg_saoluu_restore_journal_unfinished(['status' => 'unknown_state']));
 mg_saoluu_restore_journal(['status' => 'completed']);
+
+// Duration must never add the server/WordPress timezone offset. RC7 displayed
+// ~25207 seconds for a seven-second restore in UTC+7.
+test('legacy wall-clock restore duration is timezone-safe',
+    mg_saoluu_restore_duration_seconds([
+        'started_at'=>'2026-10-24 12:00:00',
+        'completed_at'=>'2026-10-24 12:00:07',
+    ])===7);
+test('epoch restore duration is authoritative',
+    mg_saoluu_restore_duration_seconds([
+        'started_at_epoch'=>1000,
+        'completed_at_epoch'=>1007,
+        'started_at'=>'2026-10-24 12:00:00',
+        'completed_at'=>'2026-10-24 19:00:07',
+    ])===7);
+
+// A failed explicit rollback that is safely reverted must preserve the ORIGINAL
+// completed restore journal/checkpoint; it must never claim status rolled_back.
+$original_completed = [
+    'status'=>'completed',
+    'pre_backup'=>'backup_pre_restore_safe_full_original.mgbackup',
+    'pre_backup_sha256'=>str_repeat('a',64),
+    'restore_files'=>true,
+    'new_files'=>['wp-content/uploads/from-restore.txt'],
+    'new_file_count'=>1,
+    'completed_at'=>'2026-10-24 12:00:07',
+];
+$rollback_reverted = mg_saoluu_rollback_attempt_reverted_journal(
+    $original_completed,
+    'backup_pre_restore_safe_full_original.mgbackup',
+    'backup_pre_restore_safe_full_guard.mgbackup',
+    time()-2
+);
+test('failed rollback recovery never claims original rollback succeeded',
+    ($rollback_reverted['status']??'')==='completed'
+    && ($rollback_reverted['rollback_attempt_status']??'')==='failed_reverted'
+    && ($rollback_reverted['pre_backup']??'')===$original_completed['pre_backup']);
+test('failed rollback recovery preserves original cleanup evidence',
+    ($rollback_reverted['new_files']??[])===$original_completed['new_files']
+    && ($rollback_reverted['rollback_attempt_checkpoint']??'')==='backup_pre_restore_safe_full_original.mgbackup');
 
 // Rollback cleanup must bind to the exact current checkpoint; stale copies fail closed,
 // while an uploaded byte-for-byte copy remains safe to accept.
@@ -490,5 +592,10 @@ $ux_js = file_get_contents(MG_SAOLUU_DIR . 'assets/js/admin.js');
 test('UI prevents duplicate long-running submissions', str_contains($ux_js, 'mgslSubmitting') && str_contains($ux_js, 'mgsl-operation-pending'));
 test('UI warns before exceeding the PHP upload limit', str_contains($ux_php, 'data-mgsl-max-upload') && str_contains($ux_js, 'setCustomValidity'));
 test('UI reports linked checkpoint and cleanup result', str_contains($ux_php, 'checkpoint_sha') && str_contains($ux_php, 'rollback_file_cleanup'));
+test('UI uses timezone-safe restore duration helper and truthful failed-rollback warning',
+    str_contains($ux_php, 'mg_saoluu_restore_duration_seconds')
+    && str_contains($ux_php, 'rollback_attempt_failed_reverted'));
+test('restore engine protects its own running plugin from archived downgrade',
+    str_contains(file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php'), 'mg_saoluu_is_runtime_self_path'));
 // No real WordPress/DBngin/cPanel integration was performed by this mock harness.
 echo "TESTS ".$GLOBALS['test_count']."/".$GLOBALS['test_count']." PASS\n";
