@@ -3,7 +3,7 @@
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 define('ABSPATH', __DIR__ . '/');
 define('DB_HOST', 'mysql.internal');
-define('MG_SAOLUU_VERSION', '1.3.0-rc3');
+define('MG_SAOLUU_VERSION', '1.3.0-rc4');
 define('MINUTE_IN_SECONDS', 60);
 $GLOBALS['mgsl_test_home'] = 'https://new.example.com/';
 $GLOBALS['mgsl_test_options'] = [];
