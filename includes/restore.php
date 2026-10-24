@@ -356,8 +356,9 @@ function mg_saoluu_check_restore_confirmation($phrase, $confirmed) {
 function mg_saoluu_restore_space_budget($free_work, $free_site, $same_volume, $need_work, $need_site) {
     if ($same_volume) {
         $needed = $need_work + $need_site;
-        if ($free_work !== false && $free_work < $needed) {
-            return new WP_Error('restore_space', 'Không đủ dung lượng chung cho giải nén và ghi website. Cần ' . size_format($needed) . ', còn ' . size_format($free_work) . '.');
+        $available = $free_work !== false ? $free_work : $free_site;
+        if ($available !== false && $available < $needed) {
+            return new WP_Error('restore_space', 'Không đủ dung lượng chung cho giải nén và ghi website. Cần ' . size_format($needed) . ', còn ' . size_format($available) . '.');
         }
         return true;
     }
