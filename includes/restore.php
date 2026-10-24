@@ -264,11 +264,22 @@ function mg_saoluu_search_replace_database($old, $new) {
 }
 
 function mg_saoluu_maintenance($enable) {
-    $file = ABSPATH . '.maintenance';
     $guard = mg_saoluu_restore_destination_check('.maintenance');
     if (is_wp_error($guard)) return $guard;
-    if ($enable) @file_put_contents($file, '<?php $upgrading = ' . time() . '; ?>', LOCK_EX);
-    elseif ($guard['exists']) @unlink($file);
+    $file = $guard['path'];
+    if ($enable) {
+        $content = '<?php $upgrading = ' . time() . '; ?>';
+        $written = @file_put_contents($file, $content, LOCK_EX);
+        clearstatcache(true, $file);
+        $check = mg_saoluu_restore_destination_check('.maintenance');
+        if ($written !== strlen($content) || is_wp_error($check) || empty($check['regular'])) {
+            return new WP_Error('maintenance_write_failed', 'Không bật được chế độ bảo trì an toàn; đã dừng trước khi nhập database.');
+        }
+    } elseif ($guard['exists']) {
+        if (!@unlink($file)) return new WP_Error('maintenance_remove_failed', 'Không gỡ được chế độ bảo trì; cần kiểm tra thủ công.');
+        clearstatcache(true, $file);
+        if (file_exists($file) || is_link($file)) return new WP_Error('maintenance_remove_failed', 'Chế độ bảo trì vẫn tồn tại; cần kiểm tra thủ công.');
+    }
     return true;
 }
 
@@ -626,6 +637,10 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     mg_saoluu_debug_log('restore_started',['type'=>$type,'source_env'=>$source_env,'target_env'=>$target_env,'restore_files'=>$restore_files]);
     $maintenance = mg_saoluu_maintenance(true);
     if (is_wp_error($maintenance)) {
+        $journal['status'] = 'maintenance_failed';
+        $journal['error_code'] = $maintenance->get_error_code();
+        mg_saoluu_restore_journal($journal);
+        mg_saoluu_debug_log('restore_preflight_failed', ['code' => $maintenance->get_error_code()]);
         mg_saoluu_remove_tree($stage);
         if ($prepared['temporary']) @unlink($zip_file);
         return $maintenance;
@@ -684,7 +699,16 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         }
     } finally {
         mg_saoluu_restore_target_settings($target_settings);
-        mg_saoluu_maintenance(false);
+        $maintenance_cleanup = mg_saoluu_maintenance(false);
+        if (is_wp_error($maintenance_cleanup)) {
+            $journal['maintenance_cleanup_error'] = $maintenance_cleanup->get_error_code();
+            if (!$error) {
+                $journal['status'] = 'maintenance_cleanup_failed';
+                $error = $maintenance_cleanup;
+            }
+            mg_saoluu_restore_journal($journal);
+            mg_saoluu_debug_log('restore_maintenance_cleanup_failed', ['code' => $maintenance_cleanup->get_error_code()]);
+        }
         mg_saoluu_remove_tree($stage);
         if ($prepared['temporary']) @unlink($zip_file);
     }
@@ -760,7 +784,12 @@ function mg_saoluu_restore_raw_sql($sql_file, $source_url = '', $change_url = tr
             ? new WP_Error('rollback_failed', 'Nhập SQL lỗi và không thể tự quay lại. Bản dự phòng: ' . $pre . '. ' . $rollback->get_error_message())
             : new WP_Error('restore_rolled_back', 'Nhập SQL lỗi nên plugin đã tự quay lại. ' . $e->getMessage());
     } finally {
-        mg_saoluu_restore_target_settings($target_settings); mg_saoluu_maintenance(false);
+        mg_saoluu_restore_target_settings($target_settings);
+        $maintenance_cleanup = mg_saoluu_maintenance(false);
+        if (is_wp_error($maintenance_cleanup)) {
+            mg_saoluu_debug_log('restore_maintenance_cleanup_failed', ['code' => $maintenance_cleanup->get_error_code()]);
+            if (!$error) $error = $maintenance_cleanup;
+        }
     }
     if ($error) return $error;
     return ['pre_backup' => $pre, 'replace' => $replace];
