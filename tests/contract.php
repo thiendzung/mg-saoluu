@@ -37,6 +37,7 @@ function get_transient($key) {return $GLOBALS['test_transients'][$key]??false;}
 function set_transient($key,$value,$ttl=0) {$GLOBALS['test_transients'][$key]=$value;return true;}
 function delete_transient($key){unset($GLOBALS['test_transients'][$key]);}
 function wp_json_encode($v,$options=0){return json_encode($v,$options);}
+function current_time($type='mysql'){return '2026-10-24 12:00:00';}
 function home_url($p='/'){return 'https://motgu.com'.(str_starts_with($p,'/')?'':'/').$p;}
 function get_post_meta($id,$key,$single=false){return $id === 2?'12345678-1234-4234-a234-123456789abc':'';}
 function get_term_meta($id,$key,$single=false){return '';}
@@ -145,7 +146,50 @@ $removed = mg_saoluu_remove_previous_restore_files([
  'status' => 'completed',
  'new_files' => ['wp-content/uploads/rc3-rollback-new.txt'],
 ]);
-test('explicit rollback removes files introduced by prior restore',$removed===1&&!file_exists($rollback_fixture));
+test('explicit rollback removes files introduced by prior restore',$removed['requested']===1&&$removed['removed']===1&&$removed['failed']===0&&!file_exists($rollback_fixture));
+$absent = mg_saoluu_remove_new_restore_files(['wp-content/uploads/rc3-rollback-absent.txt']);
+test('rollback cleanup records already absent files',$absent['requested']===1&&$absent['removed']===0&&$absent['already_absent']===1&&$absent['failed']===0);
+$denied_fixture = ABSPATH . 'wp-content/uploads/rc3-rollback-denied.txt';
+file_put_contents($denied_fixture, 'must remain');
+$delete_failure = mg_saoluu_remove_new_restore_files(['wp-content/uploads/rc3-rollback-denied.txt'], static function ($target) { return false; });
+test('rollback cleanup marks required deletion failure',$delete_failure['requested']===1&&$delete_failure['removed']===0&&$delete_failure['failed']===1&&file_exists($denied_fixture));
+
+// Rollback cleanup must bind to the exact current checkpoint, never a stale or uploaded copy.
+$checkpoint_a = $external . 'backup_pre_restore_safe_full_20261024_120001_000001.mgbackup';
+$checkpoint_b = $external . 'backup_pre_restore_safe_full_20261024_120002_000002.mgbackup';
+$checkpoint_upload_dir = $root . '/uploaded';
+mkdir($checkpoint_upload_dir, 0700, true);
+file_put_contents($checkpoint_a, 'checkpoint-a');
+file_put_contents($checkpoint_b, 'checkpoint-b');
+copy($checkpoint_b, $checkpoint_upload_dir . '/' . basename($checkpoint_b));
+$journal_a = [
+ 'status' => 'completed',
+ 'pre_backup' => basename($checkpoint_a),
+ 'pre_backup_sha256' => hash_file('sha256', $checkpoint_a),
+ 'restore_files' => true,
+ 'new_files' => ['wp-content/uploads/rc3-rollback-a.txt'],
+];
+mg_saoluu_restore_journal($journal_a);
+$context_a = mg_saoluu_rollback_checkpoint_context($checkpoint_a, ['purpose' => 'rollback'], true);
+test('immediate rollback binds exact checkpoint',!is_wp_error($context_a)&&$context_a['rollback']===true);
+$journal_b = [
+ 'status' => 'completed',
+ 'pre_backup' => basename($checkpoint_b),
+ 'pre_backup_sha256' => hash_file('sha256', $checkpoint_b),
+ 'restore_files' => true,
+ 'new_files' => ['wp-content/uploads/rc3-rollback-b.txt'],
+];
+mg_saoluu_restore_journal($journal_b);
+$stale_a = mg_saoluu_rollback_checkpoint_context($checkpoint_a, ['purpose' => 'rollback'], true);
+test('stale checkpoint fails closed',is_wp_error($stale_a)&&$stale_a->get_error_code()==='rollback_checkpoint_stale');
+$uploaded_b = mg_saoluu_rollback_checkpoint_context($checkpoint_upload_dir . '/' . basename($checkpoint_b), ['purpose' => 'rollback'], true);
+test('uploaded checkpoint fails closed',is_wp_error($uploaded_b)&&$uploaded_b->get_error_code()==='rollback_checkpoint_stale');
+$db_only_b = mg_saoluu_rollback_checkpoint_context($checkpoint_b, ['purpose' => 'rollback'], false);
+test('database-only checkpoint never enables file cleanup',!is_wp_error($db_only_b)&&$db_only_b['rollback']===false);
+$orphan = $external . 'backup_rollback_orphan_20261024_120003_000003.mgbackup';
+file_put_contents($orphan, 'orphan');
+$orphan_context = mg_saoluu_rollback_checkpoint_context($orphan, ['purpose' => 'rollback'], true);
+test('unreferenced rollback purpose fails closed',is_wp_error($orphan_context)&&$orphan_context->get_error_code()==='rollback_checkpoint_stale');
 
 // Database URL migration must process a table containing the old URL at most once.
 class FixtureDB {
