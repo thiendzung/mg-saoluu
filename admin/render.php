@@ -336,13 +336,13 @@ function mg_saoluu_render_page() {
                     <?php endif; ?>
                 </section>
             <?php endif; ?>
-            <?php if ($env === 'production'): ?>
+            <?php if ($env === 'production' || ($env === 'staging' && defined('MG_SAOLUU_MIGRATION_QA_MODE') && MG_SAOLUU_MIGRATION_QA_MODE === true)): ?>
             <section class="mgsl-card">
-                <h2 class="mgsl-title">Chuyển Local → Website mới (Production)</h2>
+                <h2 class="mgsl-title">Chuyển Local → Website mới (Production / Staging QA)</h2>
                 <p>Chỉ WordPress mới chưa có dữ liệu hoặc đơn hàng. Bản RC khóa ghi production; bản stable yêu cầu HTTPS, opt-in riêng trên hosting, khóa Local đã ghép nối và mã ký đúng SHA-256.</p>
-                <?php $migration_ready = strpos(MG_SAOLUU_VERSION, '-rc') === false && defined('MG_SAOLUU_ENABLE_PRODUCTION_MIGRATION') && MG_SAOLUU_ENABLE_PRODUCTION_MIGRATION === true; ?>
+                <?php $migration_gate = mg_saoluu_migration_production_gate(); $migration_ready = !is_wp_error($migration_gate); ?>
                 <?php if (!$migration_ready): ?>
-                    <div class="mgsl-note mgsl-warning">Chưa mở trên web thật. Phải diễn tập clone/Staging và nghiệm thu bản stable trước.</div>
+                    <div class="mgsl-note mgsl-warning"><?php echo esc_html(is_wp_error($migration_gate) ? $migration_gate->get_error_message() : 'Chưa đủ điều kiện.'); ?> Không tự mở chức năng production trong bản RC.</div>
                 <?php else: ?>
                     <form method="post" enctype="multipart/form-data"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
                         <input type="hidden" name="mg_action" value="migration_stage"><input type="hidden" name="return_tab" value="restore">
