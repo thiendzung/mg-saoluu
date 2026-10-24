@@ -85,6 +85,7 @@ test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(tr
 // Regression: the Overview diagnostic card cannot reuse RC4's unversioned status after RC6 upgrade.
 function register_activation_hook($file, $callback) {}
 function register_deactivation_hook($file, $callback) {}
+function add_filter($hook, $callback) {}
 define('MG_SAOLUU_FILE', MG_SAOLUU_DIR . 'mg-saoluu.php');
 require_once $base . 'lifecycle.php';
 $legacy_cache = ['plugin_integrity' => ['ok' => true, 'detail' => 'Đầy đủ · v1.2.1-rc4']];
