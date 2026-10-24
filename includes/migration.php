@@ -29,6 +29,11 @@ function mg_saoluu_migration_production_gate() {
     if (!$qa && (!defined('MG_SAOLUU_ENABLE_PRODUCTION_MIGRATION') || MG_SAOLUU_ENABLE_PRODUCTION_MIGRATION !== true)) {
         return new WP_Error('migration_optin_missing', 'Chưa cho phép chuyển site trên máy chủ đích qua cấu hình riêng.');
     }
+    if (!$qa && (!defined('MG_SAOLUU_EXPECTED_TARGET_HOST')
+        || !is_string(MG_SAOLUU_EXPECTED_TARGET_HOST)
+        || !hash_equals(strtolower(trim(MG_SAOLUU_EXPECTED_TARGET_HOST)), $host))) {
+        return new WP_Error('migration_host_not_pinned', 'Hostname production chưa được khóa đúng trong cấu hình máy chủ.');
+    }
     if (!mg_saoluu_request_host_is_canonical()) {
         return new WP_Error('migration_host_mismatch', 'Host request không khớp địa chỉ WordPress chuẩn.');
     }
