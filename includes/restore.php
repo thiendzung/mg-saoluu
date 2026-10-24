@@ -678,6 +678,9 @@ function mg_saoluu_restore_url_pairs($source_home, $source_site, $target_home, $
     $pairs = [];
     foreach ($raw as [$old, $new]) {
         if ($old === '' || $new === '' || $old === $new) continue;
+        if (isset($pairs[$old]) && $pairs[$old] !== $new) {
+            return new WP_Error('url_topology_ambiguous', 'Một URL nguồn đang cần ánh xạ sang hai URL đích khác nhau; hãy giữ cùng topology home/site hoặc dùng quy trình migration riêng.');
+        }
         $pairs[$old] = $new;
     }
     uksort($pairs, static function ($a, $b) { return strlen($b) <=> strlen($a); });
@@ -844,6 +847,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         mg_saoluu_debug_log('restore_database_imported',['target_env'=>$target_env]);
         if (mg_saoluu_restore_should_change_url($change_url, $target_env, $migration_approval)) {
             $url_pairs = mg_saoluu_restore_url_pairs($source_home, $source_site, $target_home, $target_site);
+            if (is_wp_error($url_pairs)) throw new RuntimeException($url_pairs->get_error_message());
             foreach ($url_pairs as $old_url => $new_url) {
                 $pair_report = mg_saoluu_search_replace_database($old_url, $new_url);
                 if (is_wp_error($pair_report)) throw new RuntimeException($pair_report->get_error_message());
