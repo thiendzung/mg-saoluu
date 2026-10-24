@@ -10,6 +10,9 @@ if (!defined('ABSPATH')) { exit; }
  */
 function mg_saoluu_migration_production_gate() {
     $env = mg_saoluu_environment();
+    if ($env !== 'production' && $env !== 'staging') {
+        return new WP_Error('migration_target_environment', 'Chỉ dùng trên production được duyệt hoặc Staging QA.');
+    }
     $host = mg_saoluu_host();
     // The ONLY RC write path is an explicitly marked staging clone whose
     // canonical hostname starts with stage/staging/sandbox/test.
