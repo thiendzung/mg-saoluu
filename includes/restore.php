@@ -353,22 +353,70 @@ function mg_saoluu_stage_new_files($stage_dir) {
     return $new;
 }
 
-function mg_saoluu_remove_new_restore_files($relative_files) {
+function mg_saoluu_remove_new_restore_files($relative_files, $unlink = null) {
+    $result = ['requested' => 0, 'removed' => 0, 'already_absent' => 0, 'failed' => 0];
+    $unlink = is_callable($unlink) ? $unlink : static function ($target) { return @unlink($target); };
     foreach ((array) $relative_files as $relative) {
+        $result['requested']++;
         $relative = ltrim(str_replace('\\', '/', (string) $relative), '/');
-        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_excluded_path($relative, 'safe_full')) continue;
+        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_excluded_path($relative, 'safe_full')) {
+            $result['failed']++;
+            continue;
+        }
         $target = trailingslashit(wp_normalize_path(ABSPATH)) . $relative;
-        if (is_file($target) || is_link($target)) @unlink($target);
+        if (!is_file($target) && !is_link($target)) {
+            $result['already_absent']++;
+            continue;
+        }
+        try {
+            $deleted = (bool) $unlink($target);
+        } catch (Throwable $e) {
+            $deleted = false;
+        }
+        if ($deleted) {
+            $result['removed']++;
+        } elseif (!file_exists($target) && !is_link($target)) {
+            $result['already_absent']++;
+        } else {
+            $result['failed']++;
+        }
     }
+    return $result;
 }
 
 /** Remove files introduced by the completed restore when applying its rollback checkpoint. */
 function mg_saoluu_remove_previous_restore_files($journal) {
-    if (!is_array($journal) || ($journal['status'] ?? '') !== 'completed') return 0;
+    $empty = ['requested' => 0, 'removed' => 0, 'already_absent' => 0, 'failed' => 0];
+    if (!is_array($journal) || ($journal['status'] ?? '') !== 'completed') return $empty;
     $files = $journal['new_files'] ?? [];
-    if (!is_array($files) || !$files) return 0;
-    mg_saoluu_remove_new_restore_files($files);
-    return count($files);
+    if (!is_array($files) || !$files) return $empty;
+    return mg_saoluu_remove_new_restore_files($files);
+}
+
+/** Resolve only the exact, current full-restore checkpoint; fail closed for stale or uploaded copies. */
+function mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore_files) {
+    if (!$restore_files) return ['rollback' => false, 'journal' => []];
+    $name = basename((string) $backup_file);
+    $purpose = sanitize_key($manifest['purpose'] ?? '');
+    $candidate = $purpose === 'rollback' || strpos($name, 'backup_pre_restore_') === 0;
+    if (!$candidate) return ['rollback' => false, 'journal' => []];
+
+    $journal = mg_saoluu_restore_journal();
+    $expected = basename((string) ($journal['pre_backup'] ?? ''));
+    $actual_path = realpath($backup_file);
+    $trusted_path = $expected !== '' ? realpath(trailingslashit(mg_saoluu_get_backup_dir()) . $expected) : false;
+    $matches = ($journal['status'] ?? '') === 'completed'
+        && !empty($journal['restore_files'])
+        && is_array($journal['new_files'] ?? null)
+        && $expected !== ''
+        && $name === $expected
+        && $actual_path !== false
+        && $trusted_path !== false
+        && wp_normalize_path($actual_path) === wp_normalize_path($trusted_path);
+    if (!$matches) {
+        return new WP_Error('rollback_checkpoint_stale', 'Không thể xác định đúng bản quay lại của lần khôi phục gần nhất. Đã dừng để tránh dọn nhầm file.');
+    }
+    return ['rollback' => true, 'journal' => $journal];
 }
 
 function mg_saoluu_rollback_from_backup($pre_path, $restore_files, $password, $target_settings) {
@@ -443,9 +491,13 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         }
     }
     $type = sanitize_key($manifest['backup_type'] ?? 'sql');
-    $rollback_restore = ($manifest['purpose'] ?? '') === 'rollback'
-        || strpos(basename($backup_file), 'backup_pre_restore_') === 0;
-    $previous_journal = $rollback_restore ? mg_saoluu_restore_journal() : [];
+    $checkpoint = mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore_files);
+    if (is_wp_error($checkpoint)) {
+        if ($prepared['temporary']) @unlink($zip_file);
+        return $checkpoint;
+    }
+    $rollback_restore = !empty($checkpoint['rollback']);
+    $previous_journal = $checkpoint['journal'];
     if ($restore_files && $type === 'sql') { if ($prepared['temporary']) @unlink($zip_file); return new WP_Error('files_missing', 'Bản sao này chỉ có database.'); }
     if ($restore_files && $target_env !== 'production' && $type === 'safe_full' && $source_env === 'production') {
         if ($prepared['temporary']) @unlink($zip_file);
@@ -501,7 +553,10 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         $health = mg_saoluu_restore_health_check($target_env !== 'production' ? $target_home : '');
         if (is_wp_error($health)) throw new RuntimeException($health->get_error_message());
         if ($rollback_restore) {
-            $journal['rollback_removed_new_file_count'] = mg_saoluu_remove_previous_restore_files($previous_journal);
+            $cleanup = mg_saoluu_remove_previous_restore_files($previous_journal);
+            $journal['rollback_file_cleanup'] = $cleanup;
+            $journal['rollback_removed_new_file_count'] = $cleanup['removed'];
+            if ($cleanup['failed'] > 0) throw new RuntimeException('Không thể hoàn tất dọn file của bản quay lại.');
         }
         $journal['status'] = 'completed'; $journal['completed_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_complete',['type'=>$type]);
     } catch (Throwable $e) {
@@ -512,10 +567,18 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
             $journal['status'] = 'rollback_failed'; $journal['rollback_error'] = $rollback->get_error_message(); mg_saoluu_restore_journal($journal);
             $error = new WP_Error('rollback_failed', 'Khôi phục lỗi và tự quay lại cũng lỗi: ' . $rollback->get_error_message() . '. Bản dự phòng: ' . $pre);
         } else {
-            mg_saoluu_remove_new_restore_files($new_files);
+            $cleanup = mg_saoluu_remove_new_restore_files($new_files);
+            $journal['rollback_file_cleanup'] = $cleanup;
+            if ($cleanup['failed'] > 0) {
+                $journal['status'] = 'rollback_failed';
+                $journal['rollback_error'] = 'Không thể dọn hết file phát sinh sau lần khôi phục lỗi.';
+                mg_saoluu_restore_journal($journal);
+                $error = new WP_Error('rollback_failed', 'Khôi phục lỗi; database đã quay lại nhưng không thể dọn hết file phát sinh. Bản dự phòng: ' . $pre);
+            } else {
             $journal['status'] = 'rolled_back'; $journal['rolled_back_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal);
             $error = new WP_Error('restore_rolled_back', 'Khôi phục không thành công nên plugin đã tự quay lại trạng thái trước đó. Lỗi ban đầu: ' . $e->getMessage());
             mg_saoluu_log_event('restore_rolled_back', $e->getMessage(), ['pre_backup' => $pre]);
+            }
         }
     } finally {
         mg_saoluu_restore_target_settings($target_settings);
