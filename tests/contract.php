@@ -55,9 +55,12 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.2.1-rc2');
+define('MG_SAOLUU_VERSION', '1.2.1-rc3');
 function add_action(){}
+function mg_saoluu_environment(){return 'local';}
+function mg_saoluu_is_local_environment(){return true;}
 require_once $base.'core.php';
+require_once $base.'diagnostics.php';
 require_once $base.'crypto.php';
 require_once $base.'google-drive.php';
 require_once $base.'catalog.php';
@@ -94,6 +97,11 @@ test('reject symlink pointing into webroot',!mg_saoluu_storage_path_safe($root.'
 test('accept real external directory',mg_saoluu_storage_path_safe($root.'/outside/vault'));
 test('reject relative path',!mg_saoluu_storage_path_safe('wp-content/backups'));
 
+test('debug enabled on clone',mg_saoluu_debug_enabled()===true);
+test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
+test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
+test('debug file outside webroot',mg_saoluu_storage_path_safe(mg_saoluu_debug_file()));
+test('debug log excludes password',!str_contains(file_get_contents(mg_saoluu_debug_file()),'secret'));
 // Legacy Data Transfer and Deploy code are not shipped; options are preserved.
 test('no dormant data-engine in distribution', !is_file(MG_SAOLUU_DIR.'includes/data-engine.php'));
 test('no dormant deploy engine in distribution', !is_file(MG_SAOLUU_DIR.'includes/deploy.php'));
