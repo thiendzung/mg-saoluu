@@ -22,6 +22,10 @@ $base=rtrim((string)(getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)),'/');
 require_once $base.'/includes/environment.php';
 require_once $base.'/includes/migration.php';
 $_SERVER['HTTP_HOST']='staging.example.com';
+$not_isolated = mg_saoluu_migration_production_gate();
+qa('staged clone refuses migration until external IO is explicitly isolated',
+    is_wp_error($not_isolated) && $not_isolated->get_error_code()==='migration_external_io_not_isolated');
+define('MG_SAOLUU_MIGRATION_EXTERNAL_IO_ISOLATED', true);
 qa('isolated staged clone can exercise signed migration engine',mg_saoluu_migration_production_gate()===true);
 $_SERVER['HTTP_HOST']='motgu.com';
 qa('host-spoof request fails staged QA gate',is_wp_error(mg_saoluu_migration_production_gate()));
