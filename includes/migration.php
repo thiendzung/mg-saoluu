@@ -193,6 +193,29 @@ function mg_saoluu_migration_sign_package($filename, $target_url, $password) {
     return 'MGMIGRATE1.' . mg_saoluu_b64url_encode(mg_saoluu_security_canonical_json($grant));
 }
 
+/**
+ * Replay ledger lives outside WordPress DB so an exact rollback can restore
+ * wp_options while still remembering consumed grants.
+ */
+function mg_saoluu_migration_nonce_ledger() {
+    $private = mg_saoluu_private_state_read('migration-nonces.json');
+    if (is_wp_error($private)) return $private;
+    if (!is_array($private)) $private = [];
+    // Legacy DB entries remain authoritative for backward compatibility.
+    $legacy = get_option('mg_saoluu_used_migration_nonces', []);
+    if (!is_array($legacy)) $legacy = [];
+    return array_replace($legacy, $private);
+}
+
+function mg_saoluu_migration_nonce_ledger_write($ledger) {
+    if (!is_array($ledger)) return new WP_Error('migration_nonce_write', 'Replay ledger không hợp lệ.');
+    if (count($ledger) > 100) $ledger = array_slice($ledger, -100, null, true);
+    $saved = mg_saoluu_private_state_write('migration-nonces.json', $ledger);
+    return is_wp_error($saved)
+        ? new WP_Error('migration_nonce_write', 'Không lưu được replay ledger ngoài database; đã dừng.')
+        : true;
+}
+
 /** Verify source-device identity, target URL, exact encrypted archive, and replay. */
 function mg_saoluu_migration_verify_grant($code, $archive_sha, $manifest, $target_url) {
     $code = trim((string) $code);
@@ -224,23 +247,19 @@ function mg_saoluu_migration_verify_grant($code, $archive_sha, $manifest, $targe
     }
     $verified = mg_saoluu_security_verify_payload_signature($p, (string) ($grant['signature'] ?? ''), $signer);
     if (is_wp_error($verified)) return $verified;
-    $used = get_option('mg_saoluu_used_migration_nonces', []);
-    if (is_array($used) && isset($used[$p['nonce']])) return new WP_Error('migration_replay', 'Mã chuyển site đã được dùng.');
+    $used = mg_saoluu_migration_nonce_ledger();
+    if (is_wp_error($used)) return $used;
+    if (isset($used[$p['nonce']])) return new WP_Error('migration_replay', 'Mã chuyển site đã được dùng.');
     return $p;
 }
 
-/** Burn the nonce before first DB mutation. Keep it during target-settings restore. */
+/** Burn the nonce in private storage before first DB mutation. */
 function mg_saoluu_migration_consume_grant($payload) {
     $nonce = (string) ($payload['nonce'] ?? '');
     if (!preg_match('/^[a-f0-9]{48}$/', $nonce)) return new WP_Error('migration_grant_invalid', 'Thiếu mã một lần.');
-    $used = get_option('mg_saoluu_used_migration_nonces', []);
-    if (!is_array($used)) $used = [];
+    $used = mg_saoluu_migration_nonce_ledger();
+    if (is_wp_error($used)) return $used;
     if (isset($used[$nonce])) return new WP_Error('migration_replay', 'Mã chuyển site đã dùng.');
     $used[$nonce] = ['at' => time(), 'sha256' => (string) ($payload['archive_sha256'] ?? '')];
-    if (count($used) > 100) $used = array_slice($used, -100, null, true);
-    if (!update_option('mg_saoluu_used_migration_nonces', $used, false)
-        && !is_array(get_option('mg_saoluu_used_migration_nonces', null))) {
-        return new WP_Error('migration_nonce_write', 'Không lưu được trạng thái mã một lần, đã dừng.');
-    }
-    return true;
+    return mg_saoluu_migration_nonce_ledger_write($used);
 }
