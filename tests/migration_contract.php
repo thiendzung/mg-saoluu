@@ -52,6 +52,8 @@ $target = mg_saoluu_migration_target_url('https://new.example.com/');
 check('target HTTPS canonicalized', $target === 'https://new.example.com');
 check('HTTP target refused', is_wp_error(mg_saoluu_migration_target_url('http://new.example.com')));
 check('local target refused', is_wp_error(mg_saoluu_migration_target_url('https://abc.test')));
+check('IP target refused', is_wp_error(mg_saoluu_migration_target_url('https://192.168.1.10')));
+check('invalid DNS hostname refused', is_wp_error(mg_saoluu_migration_target_url('https://bad_host.example.com')));
 check('target URL with path refused', is_wp_error(mg_saoluu_migration_target_url('https://new.example.com/test')));
 check('query target refused', is_wp_error(mg_saoluu_migration_target_url('https://new.example.com/?x=1')));
 $manifest = [
@@ -71,7 +73,8 @@ class MigrationFixtureDB {
     public string $prefix = 'wp_';
     public int $users = 1;
     public int $comments = 0;
-    public int $content = 2;
+    public int $content = 0;
+    public int $attachments = 0;
     public int $orders = 0;
     public int $hpos = 0;
     public function prepare($query, $param) { return str_replace('%s', "'".addslashes($param)."'", $query); }
@@ -80,6 +83,7 @@ class MigrationFixtureDB {
         if (str_contains($sql, 'wp_wc_orders')) return $this->hpos;
         if (str_contains($sql, 'wp_users')) return $this->users;
         if (str_contains($sql, 'wp_comments')) return $this->comments;
+        if (str_contains($sql, "post_type = 'attachment'")) return $this->attachments;
         if (str_contains($sql, 'shop_order')) return $this->orders;
         if (str_contains($sql, 'wp_posts')) return $this->content;
         return null;
@@ -93,6 +97,12 @@ $GLOBALS['wpdb']->hpos = 0;
 $GLOBALS['wpdb']->users = 2;
 check('existing users protect production target', is_wp_error(mg_saoluu_migration_target_fresh()));
 $GLOBALS['wpdb']->users = 1;
+$GLOBALS['wpdb']->content = 1;
+check('existing content protects production target', is_wp_error(mg_saoluu_migration_target_fresh()));
+$GLOBALS['wpdb']->content = 0;
+$GLOBALS['wpdb']->attachments = 1;
+check('existing media protects production target', is_wp_error(mg_saoluu_migration_target_fresh()));
+$GLOBALS['wpdb']->attachments = 0;
 
 if (!extension_loaded('sodium')) { fwrite(STDERR, "SODIUM REQUIRED\n"); exit(1); }
 $pair = sodium_crypto_sign_keypair();
