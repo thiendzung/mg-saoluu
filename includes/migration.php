@@ -38,7 +38,10 @@ function mg_saoluu_migration_production_gate() {
         return new WP_Error('migration_host_mismatch', 'Host request không khớp địa chỉ WordPress chuẩn.');
     }
     if (!defined('DISABLE_WP_CRON') || DISABLE_WP_CRON !== true) {
-        return new WP_Error('migration_cron_active', 'Hãy tắt WP-Cron ở cấu hình đích và cách ly email, checkout, webhook trước khi nhập.');
+        return new WP_Error('migration_cron_active', 'Hãy tắt WP-Cron ở cấu hình đích trước khi nhập.');
+    }
+    if (!defined('MG_SAOLUU_MIGRATION_EXTERNAL_IO_ISOLATED') || MG_SAOLUU_MIGRATION_EXTERNAL_IO_ISOLATED !== true) {
+        return new WP_Error('migration_external_io_not_isolated', 'Chưa xác nhận cách ly SMTP, payment, webhook và outbound HTTP ở môi trường đích.');
     }
     if (!function_exists('is_ssl') || !is_ssl()) {
         return new WP_Error('migration_https_required', 'Phải xác nhận HTTPS cho trang quản trị web thật trước khi chuyển site.');
@@ -62,8 +65,10 @@ function mg_saoluu_migration_target_url($url) {
     $host = strtolower(rtrim($host, '.'));
     if (in_array($host, ['localhost', '127.0.0.1'], true)
         || str_ends_with($host, '.test') || str_ends_with($host, '.local')
-        || !preg_match('/^[a-z0-9.-]+$/', $host) || strpos($host, '.') === false) {
-        return new WP_Error('migration_public_host_required', 'Tên miền đích phải là tên miền công khai.');
+        || filter_var($host, FILTER_VALIDATE_IP) !== false
+        || filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false
+        || strpos($host, '.') === false) {
+        return new WP_Error('migration_public_host_required', 'Tên miền đích phải là hostname công khai hợp lệ, không dùng IP/local domain.');
     }
     return 'https://' . $host;
 }
@@ -109,6 +114,7 @@ function mg_saoluu_migration_target_fresh() {
         'users' => "SELECT COUNT(*) FROM `{$prefix}users`",
         'comments' => "SELECT COUNT(*) FROM `{$prefix}comments`",
         'content' => "SELECT COUNT(*) FROM `{$prefix}posts` WHERE post_type NOT IN ('revision','nav_menu_item','customize_changeset','wp_template','wp_template_part','wp_global_styles','attachment')",
+        'attachments' => "SELECT COUNT(*) FROM `{$prefix}posts` WHERE post_type = 'attachment'",
         'orders_posts' => "SELECT COUNT(*) FROM `{$prefix}posts` WHERE post_type IN ('shop_order','shop_order_refund')",
     ];
     $counts = [];
@@ -126,9 +132,9 @@ function mg_saoluu_migration_target_fresh() {
     } else {
         $counts['hpos_orders'] = 0;
     }
-    if ($counts['users'] > 1 || $counts['comments'] > 0 || $counts['content'] > 2
-        || $counts['orders_posts'] !== 0 || $counts['hpos_orders'] !== 0) {
-        return new WP_Error('migration_existing_site', 'Website đích đã có dữ liệu/đơn hàng/người dùng. Không ghi đè bằng gói Local. Cần quy trình chuyển dữ liệu riêng.');
+    if ($counts['users'] !== 1 || $counts['comments'] !== 0 || $counts['content'] !== 0
+        || $counts['attachments'] !== 0 || $counts['orders_posts'] !== 0 || $counts['hpos_orders'] !== 0) {
+        return new WP_Error('migration_existing_site', 'Website đích phải là WordPress trắng: đúng 1 admin, không bài/page/media/comment/order. Hãy xóa nội dung mẫu hoặc dựng site đích mới.');
     }
     return $counts;
 }
