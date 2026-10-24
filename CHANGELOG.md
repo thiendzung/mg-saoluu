@@ -1,3 +1,10 @@
+## 1.2.1-rc6 — Backup/restore UI and failure safety (2026-10-24)
+
+- Prevent duplicate operations and show honest pending feedback; expose PHP upload limits and checkpoint/journal status.
+- Verify complete encrypted/decrypted writes; atomically save restore journal; refuse new restore with unfinished/unknown journal.
+- Check both working and WordPress destination volumes before restore; add bounded synthetic failure regressions.
+- Candidate pending exact ZIP CI and clone runtime acceptance; production restore still hard-blocked.
+
 ## 1.2.1-rc5 — Correct UI rollback checkpoint association (2026-10-24)
 
 - Fix upload-generated filename mismatch on rollback checkpoint restoration, binding to current journal and trusted/uploaded SHA-256 (PR #15).

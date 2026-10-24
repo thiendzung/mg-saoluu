@@ -57,7 +57,7 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.2.1-rc5');
+define('MG_SAOLUU_VERSION', '1.2.1-rc6');
 function add_action(){}
 function mg_saoluu_environment(){return 'local';}
 function mg_saoluu_is_local_environment(){return true;}
@@ -285,6 +285,7 @@ mg_saoluu_restore_journal(['status' => 'running']);
 $blocked_restore = mg_saoluu_restore_zip($root . '/not-present.mgbackup', true);
 test('interrupted restore blocks another restore before SQL import',
     is_wp_error($blocked_restore) && $blocked_restore->get_error_code() === 'restore_unfinished');
+test('unknown journal status blocks future restore', mg_saoluu_restore_journal_unfinished(['status' => 'unknown_state']));
 mg_saoluu_restore_journal(['status' => 'completed']);
 
 // Rollback cleanup must bind to the exact current checkpoint; stale copies fail closed,
