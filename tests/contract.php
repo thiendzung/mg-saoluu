@@ -57,13 +57,14 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.2.1-rc6');
+define('MG_SAOLUU_VERSION', '1.3.0-rc1');
 function add_action(){}
 function mg_saoluu_environment(){return 'local';}
 function mg_saoluu_is_local_environment(){return true;}
 require_once $base.'core.php';
 require_once $base.'diagnostics.php';
 require_once $base.'crypto.php';
+require_once $base.'migration.php';
 require_once $base.'google-drive.php';
 require_once $base.'catalog.php';
 require_once $base.'backup.php';
@@ -474,6 +475,14 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  $_POST=['mg_action'=>$legacy];$message='';$status='';
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
+}
+// RC production-import actions must remain closed, including direct forged requests.
+foreach (['migration_stage', 'migration_apply'] as $migration_action) {
+    $_POST = ['mg_action' => $migration_action, 'mg_nonce' => 'fixture'];
+    $blocked_msg = ''; $blocked_status = '';
+    mg_saoluu_handle_actions($blocked_msg, $blocked_status);
+    test('RC refuses production migration POST: ' . $migration_action,
+        $blocked_status === 'error' && $blocked_msg !== '');
 }
 // RC must reject stale/direct approval POST even with valid admin permissions and nonce.
 foreach (['security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval'] as $blocked_action) {
