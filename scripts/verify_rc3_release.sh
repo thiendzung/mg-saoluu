@@ -1,0 +1,42 @@
+#!/bin/sh
+# Verify source and extracted RC3 ZIP with the same contract/integrity gates.
+# Run only from an isolated checkout. Does not touch WordPress or production.
+set -eu
+
+ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/mgsl-rc3-verify.XXXXXX")
+trap 'rm -rf "$TMP"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+cd "$ROOT"
+echo "=== SOURCE: PHP lint ==="
+find . -type f -name '*.php' ! -path './.git/*' -print0 | xargs -0 -n 1 php -l
+
+echo "=== SOURCE: integrity, contracts and unsafe config ==="
+php tests/integrity_manifest.php
+php tests/contract.php
+php tests/contract.php --unsafe-config
+
+ZIP="$TMP/mg-saoluu-v1.2.1-rc3.zip"
+echo "=== PACKAGE: deterministic ZIP + CRC/payload ==="
+python3 scripts/package_release.py --out "$ZIP"
+unzip -t "$ZIP"
+unzip -q "$ZIP" -d "$TMP/extracted"
+
+echo "=== EXTRACTED ZIP: integrity, contracts and unsafe config ==="
+export MGSL_TEST_PLUGIN_DIR="$TMP/extracted/mg-saoluu"
+test -f "$MGSL_TEST_PLUGIN_DIR/mg-saoluu.php"
+php tests/integrity_manifest.php
+php tests/contract.php
+php tests/contract.php --unsafe-config
+
+echo "=== FINAL ZIP SHA-256 ==="
+python3 - "$ZIP" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+print(hashlib.sha256(p.read_bytes()).hexdigest(), p.name)
+PY
+echo "PASS: source, packaged payload, extracted integrity and contracts"
