@@ -13,7 +13,7 @@ function mg_saoluu_host() {
 
 /** A wrong Host header can never make a production website look like Local. */
 function mg_saoluu_request_host_is_canonical() {
-    if (PHP_SAPI === 'cli' || empty($_SERVER['HTTP_HOST'])) return true;
+    if (empty($_SERVER['HTTP_HOST'])) return true;
     $request = strtolower(trim((string) $_SERVER['HTTP_HOST']));
     // A Host header must be one DNS name (optionally with port), no path or credentials.
     if (strlen($request) > 253 || preg_match('/[\\\\\/\\s@]/', $request)) return false;
