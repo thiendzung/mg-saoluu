@@ -1,3 +1,12 @@
+## 1.3.0-rc5 — Exact DB rollback state (2026-10-25)
+
+- Fix RC4 runtime blocker where table/view schema returned exactly to baseline but the stable DB hash still differed only in `mg_options`.
+- Move the migration one-time replay ledger to atomic private JSON state outside WordPress DB, preserving replay protection across rollback without mutating `wp_options`.
+- Move new operational audit events to private JSON state outside WordPress DB; the Security UI still reads legacy DB audit history for compatibility.
+- Explicit log clearing removes both private and legacy audit history only when requested by the administrator.
+- Retain RC4 exact schema reconciliation (12 → 83 → remove 71 → exact 12) and fail-closed schema gates.
+- Production mutation remains hard-blocked in RC5.
+
 ## 1.3.0-rc4 — Exact database schema rollback (2026-10-25)
 
 - Fix RC3 runtime blocker where checkpoint import restored baseline rows but left database tables created by migration.
