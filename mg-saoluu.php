@@ -27,6 +27,7 @@ require_once MG_SAOLUU_DIR . 'includes/core.php';
 require_once MG_SAOLUU_DIR . 'includes/diagnostics.php';
 require_once MG_SAOLUU_DIR . 'includes/crypto.php';
 require_once MG_SAOLUU_DIR . 'includes/security.php';
+require_once MG_SAOLUU_DIR . 'includes/migration.php';
 require_once MG_SAOLUU_DIR . 'includes/google-drive.php';
 require_once MG_SAOLUU_DIR . 'includes/backup.php';
 require_once MG_SAOLUU_DIR . 'includes/restore.php';
