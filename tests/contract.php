@@ -307,6 +307,29 @@ $object_payload = 'a:1:{s:5:"cache";O:20:"Astra_Builder_Header":1:{s:3:"url";s:1
 $object_replaced = mg_saoluu_recursive_replace('https://a.test','https://a.test.preview',$object_payload);
 test('serialized incomplete object payload is not mutated', $object_replaced === $object_payload);
 
+ 
+// Serialized PHP supports cyclic R references; these must not exhaust memory.
+$cyclic_payload = 'a:2:{i:0;R:1;i:1;s:16:"https://a.test/x";}';
+test('serialized cyclic reference preserved safely',
+    mg_saoluu_recursive_replace('https://a.test', 'https://a.test.preview', $cyclic_payload) === $cyclic_payload);
+ 
+$deep_value = 'https://a.test/x';
+for ($i = 0; $i < 80; $i++) $deep_value = [$deep_value];
+$deep_payload = serialize($deep_value);
+test('deep serialized graph fails closed without changing bytes',
+    mg_saoluu_recursive_replace('https://a.test', 'https://a.test.preview', $deep_payload) === $deep_payload);
+ 
+$invalid_payload = 'a:1:{s:3:"url";s:15:"https://a.test/x";}';
+test('malformed serialized payload stays byte-identical',
+    mg_saoluu_recursive_replace('https://a.test', 'https://a.test.preview', $invalid_payload) === $invalid_payload);
+
+// PHP enums are objects unaffected by unserialize(allowed_classes=false).
+enum MgslTestEnum { case Primary; }
+$enum_payload = serialize(['url' => 'https://a.test/x', 'enum' => MgslTestEnum::Primary]);
+test('serialized enum object remains intact',
+    mg_saoluu_recursive_replace('https://a.test', 'https://a.test.preview', $enum_payload) === $enum_payload);
+
+
 // New backups carry source table prefix; incompatible clone imports fail before DB writes.
 $ok=mg_saoluu_backup_prefix_preflight(['db_table_prefix'=>'wp_'],'wp_',true);
 test('matching prefix allowed',$ok===true);
