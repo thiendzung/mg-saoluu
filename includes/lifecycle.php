@@ -80,9 +80,19 @@ function mg_saoluu_production_constant_enabled() {
     return defined('MG_SAOLUU_ALLOW_PRODUCTION_RESTORE') && MG_SAOLUU_ALLOW_PRODUCTION_RESTORE === true;
 }
 
+function mg_saoluu_audit_log_read() {
+    $private = mg_saoluu_private_state_read('audit-log.json');
+    if (is_wp_error($private) || !is_array($private)) $private = [];
+    // Read legacy DB history for compatibility, but never write new audit rows
+    // back into wp_options. This lets DB rollback return byte-for-byte baseline.
+    $legacy = get_option('mg_saoluu_audit_log', []);
+    if (!is_array($legacy)) $legacy = [];
+    return array_slice(array_merge($private, $legacy), 0, 100);
+}
+
 function mg_saoluu_log_event($event, $message = '', $context = []) {
-    $logs = get_option('mg_saoluu_audit_log', []);
-    if (!is_array($logs)) $logs = [];
+    $logs = mg_saoluu_private_state_read('audit-log.json');
+    if (is_wp_error($logs) || !is_array($logs)) $logs = [];
     $user = wp_get_current_user();
     array_unshift($logs, [
         'time' => current_time('mysql'),
@@ -94,7 +104,8 @@ function mg_saoluu_log_event($event, $message = '', $context = []) {
         'user' => $user && $user->exists() ? $user->user_login : 'system',
         'context' => is_array($context) ? array_map('sanitize_text_field', $context) : [],
     ]);
-    update_option('mg_saoluu_audit_log', array_slice($logs, 0, 100), false);
+    $saved = mg_saoluu_private_state_write('audit-log.json', array_slice($logs, 0, 100));
+    return !is_wp_error($saved);
 }
 
 /** Version-scoped cache prevents stale status after plugin upgrades. */
