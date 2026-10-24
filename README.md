@@ -1,6 +1,6 @@
-# MG Sao Lưu v1.2.1-rc3 (clone trial candidate)
+# MG Sao Lưu v1.2.1-rc5 (pre-release; backup & restore clone)
 
-WordPress Backup → Verify → Store → Restore. Not live two-way content sync or theme deployment.
+WordPress Backup → Verify → Store → Restore. Experimental restore on isolated Local/Staging clones only. Production restore is blocked. No live synchronization.
 
 ## Host → Local trial
 1. Install on dedicated WordPress clone(s) with separate databases; verify WordPress 7.1+, PHP 8.3+, ZipArchive/OpenSSL, mysql/mysqldump, outside-webroot storage.
@@ -19,3 +19,6 @@ Plugin debug runs by default on Local/Staging only, OFF on Production, files sto
 - Source/contract tests cannot substitute actual independent WordPress + MariaDB/MySQL restore drill.
 
 See [release QA](docs/RELEASE_QA.md) and [recovery runbook](RECOVERY_RUNBOOK.md).
+
+### v1.2.1-rc5 limitation
+Complex PHP-serialized values containing unavailable plugin objects, enums, cyclic references or excessively deep structures are kept unchanged during URL replacement to prevent corruption. Inspect remaining old URLs on the restored clone; do not treat this pre-release as proof of complete URL migration.

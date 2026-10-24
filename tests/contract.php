@@ -56,7 +56,7 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.2.1-rc3');
+define('MG_SAOLUU_VERSION', '1.2.1-rc5');
 function add_action(){}
 function mg_saoluu_environment(){return 'local';}
 function mg_saoluu_is_local_environment(){return true;}
@@ -235,7 +235,8 @@ file_put_contents($denied_fixture, 'must remain');
 $delete_failure = mg_saoluu_remove_new_restore_files(['wp-content/uploads/rc3-rollback-denied.txt'], static function ($target) { return false; });
 test('rollback cleanup marks required deletion failure',$delete_failure['requested']===1&&$delete_failure['removed']===0&&$delete_failure['failed']===1&&file_exists($denied_fixture));
 
-// Rollback cleanup must bind to the exact current checkpoint, never a stale or uploaded copy.
+// Rollback cleanup must bind to the exact current checkpoint; stale copies fail closed,
+// while an uploaded byte-for-byte copy remains safe to accept.
 $checkpoint_a = $external . 'backup_pre_restore_safe_full_20261024_120001_000001.mgbackup';
 $checkpoint_b = $external . 'backup_pre_restore_safe_full_20261024_120002_000002.mgbackup';
 $checkpoint_upload_dir = $root . '/uploaded';
@@ -263,8 +264,14 @@ $journal_b = [
 mg_saoluu_restore_journal($journal_b);
 $stale_a = mg_saoluu_rollback_checkpoint_context($checkpoint_a, ['purpose' => 'rollback'], true);
 test('stale checkpoint fails closed',is_wp_error($stale_a)&&$stale_a->get_error_code()==='rollback_checkpoint_stale');
-$uploaded_b = mg_saoluu_rollback_checkpoint_context($checkpoint_upload_dir . '/' . basename($checkpoint_b), ['purpose' => 'rollback'], true);
-test('uploaded checkpoint fails closed',is_wp_error($uploaded_b)&&$uploaded_b->get_error_code()==='rollback_checkpoint_stale');
+$uploaded_b = $checkpoint_upload_dir . '/mg-upload-random.mgbackup';
+copy($checkpoint_b, $uploaded_b);
+$uploaded_b = mg_saoluu_rollback_checkpoint_context($uploaded_b, ['purpose' => 'rollback'], true);
+test('uploaded exact checkpoint binds by SHA',!is_wp_error($uploaded_b)&&$uploaded_b['rollback']===true);
+$uploaded_stale = $checkpoint_upload_dir . '/mg-upload-stale.mgbackup';
+copy($checkpoint_a, $uploaded_stale);
+$uploaded_stale_context = mg_saoluu_rollback_checkpoint_context($uploaded_stale, ['purpose' => 'rollback'], true);
+test('uploaded stale checkpoint fails closed',is_wp_error($uploaded_stale_context)&&$uploaded_stale_context->get_error_code()==='rollback_checkpoint_stale');
 $db_only_b = mg_saoluu_rollback_checkpoint_context($checkpoint_b, ['purpose' => 'rollback'], false);
 test('database-only checkpoint never enables file cleanup',!is_wp_error($db_only_b)&&$db_only_b['rollback']===false);
 $orphan = $external . 'backup_rollback_orphan_20261024_120003_000003.mgbackup';
@@ -301,6 +308,34 @@ test('URL replace handles >150 rows in two batches',!is_wp_error($rep)&&$rep['ro
 test('URL replace each row only once',count($wpdb->updates)===151&&max($wpdb->updates)===1);
 test('WordPress post guid unchanged',$wpdb->rows[3]['guid']==='https://a.test/?p=3');
 test('serialized data portable',unserialize($wpdb->rows[1]['post_content'])['url']==='https://a.test.preview/p/1');
+
+// Serialized arrays can contain plugin objects whose class is unavailable during a safe URL move.
+$object_payload = 'a:1:{s:5:"cache";O:20:"Astra_Builder_Header":1:{s:3:"url";s:16:"https://a.test/x";}}';
+$object_replaced = mg_saoluu_recursive_replace('https://a.test','https://a.test.preview',$object_payload);
+test('serialized incomplete object payload is not mutated', $object_replaced === $object_payload);
+
+ 
+// Serialized PHP supports cyclic R references; these must not exhaust memory.
+$cyclic_payload = 'a:2:{i:0;R:1;i:1;s:16:"https://a.test/x";}';
+test('serialized cyclic reference preserved safely',
+    mg_saoluu_recursive_replace('https://a.test', 'https://a.test.preview', $cyclic_payload) === $cyclic_payload);
+ 
+$deep_value = 'https://a.test/x';
+for ($i = 0; $i < 80; $i++) $deep_value = [$deep_value];
+$deep_payload = serialize($deep_value);
+test('deep serialized graph fails closed without changing bytes',
+    mg_saoluu_recursive_replace('https://a.test', 'https://a.test.preview', $deep_payload) === $deep_payload);
+ 
+$invalid_payload = 'a:1:{s:3:"url";s:15:"https://a.test/x";}';
+test('malformed serialized payload stays byte-identical',
+    mg_saoluu_recursive_replace('https://a.test', 'https://a.test.preview', $invalid_payload) === $invalid_payload);
+
+// PHP enums are objects unaffected by unserialize(allowed_classes=false).
+enum MgslTestEnum { case Primary; }
+$enum_payload = serialize(['url' => 'https://a.test/x', 'enum' => MgslTestEnum::Primary]);
+test('serialized enum object remains intact',
+    mg_saoluu_recursive_replace('https://a.test', 'https://a.test.preview', $enum_payload) === $enum_payload);
+
 
 // New backups carry source table prefix; incompatible clone imports fail before DB writes.
 $ok=mg_saoluu_backup_prefix_preflight(['db_table_prefix'=>'wp_'],'wp_',true);

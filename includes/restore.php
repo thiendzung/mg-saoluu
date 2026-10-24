@@ -167,13 +167,36 @@ function mg_saoluu_recursive_replace($old, $new, $value) {
             // Không gọi __wakeup/__unserialize từ dữ liệu nhập vào. Object tuần tự được giữ nguyên để tránh chạy mã ngoài ý muốn.
             if (preg_match('/^(?:O|C):/', $value)) return $value;
             $unserialized = @unserialize($value, ['allowed_classes' => false]);
-            if ($unserialized !== false || $value === 'b:0;') return serialize(mg_saoluu_recursive_replace($old, $new, $unserialized));
+            // Refuse unsafe/complex serialized payloads, including nested objects and
+            // self-references. Preserve original bytes instead of breaking their structure.
+            if ($unserialized === false && $value !== 'b:0;') return $value;
+            if (mg_saoluu_contains_unsafe_serialized_value($unserialized)) return $value;
+            return serialize(mg_saoluu_recursive_replace($old, $new, $unserialized));
         }
         return str_replace([$old, str_replace('/', '\\/', $old)], [$new, str_replace('/', '\\/', $new)], $value);
     }
     if (is_array($value)) { foreach ($value as $k => $v) $value[$k] = mg_saoluu_recursive_replace($old, $new, $v); return $value; }
     if (is_object($value)) { foreach (get_object_vars($value) as $k => $v) $value->$k = mg_saoluu_recursive_replace($old, $new, $v); return $value; }
     return $value;
+}
+
+/**
+ * True means this decoded serialized value is unsafe to rewrite; leave bytes intact.
+ * PHP serialized arrays may contain recursive R/r references, which otherwise cause
+ * unbounded traversal and fatal memory exhaustion. Keep both depth and node budgets.
+ */
+function mg_saoluu_contains_unsafe_serialized_value($value, $depth = 0, &$visited = null) {
+    if ($visited === null) $visited = 0;
+    if (++$visited > 4096 || $depth >= 64) return true;
+    // allowed_classes=false normally yields incomplete objects; enum objects are
+    // also possible. Never mutate ANY object during URL migration.
+    if (is_object($value)) return true;
+    if (is_array($value)) {
+        foreach ($value as $item) {
+            if (mg_saoluu_contains_unsafe_serialized_value($item, $depth + 1, $visited)) return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -488,7 +511,7 @@ function mg_saoluu_remove_previous_restore_files($journal) {
     return mg_saoluu_remove_new_restore_files($files);
 }
 
-/** Resolve only the exact, current full-restore checkpoint; fail closed for stale or uploaded copies. */
+/** Resolve only the exact, current full-restore checkpoint; accept an exact uploaded copy by SHA. */
 function mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore_files) {
     if (!$restore_files) return ['rollback' => false, 'journal' => []];
     $name = basename((string) $backup_file);
@@ -501,16 +524,17 @@ function mg_saoluu_rollback_checkpoint_context($backup_file, $manifest, $restore
     $expected_hash = strtolower((string) ($journal['pre_backup_sha256'] ?? ''));
     $actual_path = realpath($backup_file);
     $trusted_path = $expected !== '' ? realpath(trailingslashit(mg_saoluu_get_backup_dir()) . $expected) : false;
-    $actual_hash = $trusted_path !== false ? @hash_file('sha256', $trusted_path) : false;
+    $trusted_hash = $trusted_path !== false ? @hash_file('sha256', $trusted_path) : false;
+    $actual_hash = $actual_path !== false && is_file($actual_path) && !is_link($backup_file) ? @hash_file('sha256', $actual_path) : false;
     $matches = ($journal['status'] ?? '') === 'completed'
         && !empty($journal['restore_files'])
         && is_array($journal['new_files'] ?? null)
         && $expected !== ''
         && preg_match('/^[a-f0-9]{64}$/', $expected_hash) === 1
-        && $name === $expected
         && $actual_path !== false
         && $trusted_path !== false
-        && wp_normalize_path($actual_path) === wp_normalize_path($trusted_path)
+        && is_string($trusted_hash)
+        && hash_equals($expected_hash, strtolower($trusted_hash))
         && is_string($actual_hash)
         && hash_equals($expected_hash, strtolower($actual_hash));
     if (!$matches) {

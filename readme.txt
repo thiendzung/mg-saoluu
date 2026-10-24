@@ -3,10 +3,10 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.2.1-rc3
+Stable tag: 1.2.1-rc5
 License: GPLv2 or later
 
-MG Sao Luu v1.2.1-rc3 la release candidate danh cho Backup, Verify, Store, Restore.
+MG Sao Luu v1.2.1-rc5 la pre-release thu nghiem Backup, Verify, Store, Restore tren clone.
 
 == Description ==
 
@@ -28,6 +28,16 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 5. Keep hosting JetBackup + offsite independently. Production only after separate acceptance.
 
 == Changelog ==
+
+= 1.2.1-rc5 =
+* Fix rollback checkpoint association for identical uploaded archive with generated filename.
+* Keep SHA-256/journal validation and reject stale or altered checkpoints.
+* Production restore remains disabled.
+
+= 1.2.1-rc4 =
+* Fix incomplete Astra object during URL migration on restore.
+* Bound serialized data graph traversal, keep unsafe values unchanged; review remaining URLs on the clone.
+* Local/Staging clone restore only; production restore always blocked.
 
 = 1.2.1-rc2 =
 * PHP 8.3+ / WordPress 7.1+ declared; atomic file lock for scheduled/admin jobs.

@@ -45,7 +45,7 @@ def read_manifest():
 def build(output, refresh=False):
     manifest = read_manifest()
     # Detect forgotten new plugin files: a build must never silently omit code.
-    excluded = {".git", "tests", "docs", "scripts"}
+    excluded = {".git", ".github", "tests", "docs", "scripts", "dist"}
     actual_plugin_files = {
         file.relative_to(ROOT).as_posix()
         for file in ROOT.rglob("*")

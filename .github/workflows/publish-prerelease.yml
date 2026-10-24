@@ -1,0 +1,86 @@
+name: Verify and publish MG Sao Luu prerelease
+
+on:
+  push:
+    branches:
+      - 'release/v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mgsl-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-and-publish:
+    if: github.repository == 'thiendzung/mg-saoluu'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: PHP 8.3 CLI
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, openssl
+          coverage: none
+
+      - name: Confirm release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#release/v}"
+          if [[ "$version" != "1.2.1-rc5" ]]; then
+            echo "This RC workflow is limited to v1.2.1-rc4; refusing unexpected branch." >&2
+            exit 1
+          fi
+          python3 - "$version" <<'PY'
+          import json
+          import pathlib
+          import sys
+          ver = sys.argv[1]
+          text = pathlib.Path("mg-saoluu.php").read_text(encoding="utf-8")
+          data = json.loads(pathlib.Path("integrity.json").read_text(encoding="utf-8"))
+          if f"Version: {ver}" not in text or f"MG_SAOLUU_VERSION', '{ver}'" not in text:
+              raise SystemExit("Version mismatch in PHP header/constants")
+          if data.get("plugin_version") != ver:
+              raise SystemExit("Version mismatch in integrity.json")
+          if not pathlib.Path(f"docs/releases/v{ver}.md").is_file():
+              raise SystemExit("Missing release notes")
+          print("PASS release identity", ver)
+          PY
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Verify source, build installable ZIP, verify extracted ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          zipfile="$RUNNER_TEMP/mg-saoluu-v$VERSION.zip"
+          sh scripts/verify_rc3_release.sh "$zipfile" | tee "$RUNNER_TEMP/mgsl-rc5-gates.log"
+          test "$(grep -Fc 'TESTS 84/84 PASS' "$RUNNER_TEMP/mgsl-rc5-gates.log")" -eq 2
+          test "$(grep -Fc 'TESTS 4/4 PASS' "$RUNNER_TEMP/mgsl-rc5-gates.log")" -eq 2
+          test "$(grep -Fc 'PASS integrity manifest matches 27 source files' "$RUNNER_TEMP/mgsl-rc5-gates.log")" -eq 2
+          unzip -t "$zipfile" >/dev/null
+          cd "$RUNNER_TEMP"
+          sha256sum "mg-saoluu-v$VERSION.zip" > "mg-saoluu-v$VERSION.zip.sha256"
+          echo "PASS final prerelease package and SHA256"
+
+      - name: Publish GitHub prerelease only after gates PASS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" \
+            "$RUNNER_TEMP/mg-saoluu-v$VERSION.zip" \
+            "$RUNNER_TEMP/mg-saoluu-v$VERSION.zip.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "MG Sao Luu v$VERSION (backup/restore prerelease)" \
+            --notes-file "docs/releases/v$VERSION.md" \
+            --prerelease \
+            --latest=false

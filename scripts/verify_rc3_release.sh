@@ -1,5 +1,5 @@
 #!/bin/sh
-# Verify source and extracted RC3 ZIP with the same contract/integrity gates.
+# Verify source and extracted RC ZIP with the same contract/integrity gates.
 # Run only from an isolated checkout. Does not touch WordPress or production.
 set -eu
 
@@ -13,7 +13,7 @@ if [ "$#" -eq 1 ] && { [ -e "$1" ] || [ -L "$1" ]; }; then
 fi
 
 ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/mgsl-rc3-verify.XXXXXX")
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/mgsl-rc5-verify.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -27,7 +27,7 @@ php tests/integrity_manifest.php
 php tests/contract.php
 php tests/contract.php --unsafe-config
 
-ZIP="$TMP/mg-saoluu-v1.2.1-rc3.zip"
+ZIP="$TMP/mg-saoluu-v1.2.1-rc5.zip"
 echo "=== PACKAGE: deterministic ZIP + CRC/payload ==="
 python3 scripts/package_release.py --out "$ZIP"
 unzip -t "$ZIP"
