@@ -138,6 +138,14 @@ foreach($remain as $name){$kind=mg_saoluu_retention_group($name,$meta[$name]??[]
 test('SQL retention 7 independently',$count['sql']===7);
 test('full retention 4 plus separately protected',$count['safe_full']===5&&file_exists($external.$full[0]));
 test('rollback retention 3 independently',$count['rollback']===3);
+$rollback_fixture = ABSPATH . 'wp-content/uploads/rc3-rollback-new.txt';
+wp_mkdir_p(dirname($rollback_fixture));
+file_put_contents($rollback_fixture, 'introduced by restore');
+$removed = mg_saoluu_remove_previous_restore_files([
+ 'status' => 'completed',
+ 'new_files' => ['wp-content/uploads/rc3-rollback-new.txt'],
+]);
+test('explicit rollback removes files introduced by prior restore',$removed===1&&!file_exists($rollback_fixture));
 
 // Database URL migration must process a table containing the old URL at most once.
 class FixtureDB {

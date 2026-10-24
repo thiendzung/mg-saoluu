@@ -362,6 +362,15 @@ function mg_saoluu_remove_new_restore_files($relative_files) {
     }
 }
 
+/** Remove files introduced by the completed restore when applying its rollback checkpoint. */
+function mg_saoluu_remove_previous_restore_files($journal) {
+    if (!is_array($journal) || ($journal['status'] ?? '') !== 'completed') return 0;
+    $files = $journal['new_files'] ?? [];
+    if (!is_array($files) || !$files) return 0;
+    mg_saoluu_remove_new_restore_files($files);
+    return count($files);
+}
+
 function mg_saoluu_rollback_from_backup($pre_path, $restore_files, $password, $target_settings) {
     $prepared = mg_saoluu_prepare_backup_file($pre_path, $password);
     if (is_wp_error($prepared)) return $prepared;
@@ -434,6 +443,9 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         }
     }
     $type = sanitize_key($manifest['backup_type'] ?? 'sql');
+    $rollback_restore = ($manifest['purpose'] ?? '') === 'rollback'
+        || strpos(basename($backup_file), 'backup_pre_restore_') === 0;
+    $previous_journal = $rollback_restore ? mg_saoluu_restore_journal() : [];
     if ($restore_files && $type === 'sql') { if ($prepared['temporary']) @unlink($zip_file); return new WP_Error('files_missing', 'Bản sao này chỉ có database.'); }
     if ($restore_files && $target_env !== 'production' && $type === 'safe_full' && $source_env === 'production') {
         if ($prepared['temporary']) @unlink($zip_file);
@@ -460,7 +472,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     $target_settings = mg_saoluu_capture_target_settings();
     $source_home = (string) ($manifest['source_url'] ?? '');
     $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
-    $journal = ['status' => 'running', 'source' => basename($backup_file), 'pre_backup' => $pre, 'restore_files' => (bool) $restore_files, 'new_file_count' => count($new_files), 'started_at' => current_time('mysql')];
+    $journal = ['status' => 'running', 'source' => basename($backup_file), 'pre_backup' => $pre, 'restore_files' => (bool) $restore_files, 'new_file_count' => count($new_files), 'new_files' => $new_files, 'started_at' => current_time('mysql')];
     mg_saoluu_restore_journal($journal);
     mg_saoluu_debug_log('restore_started',['type'=>$type,'source_env'=>$source_env,'target_env'=>$target_env,'restore_files'=>$restore_files]);
     mg_saoluu_maintenance(true);
@@ -488,6 +500,9 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         wp_cache_flush();
         $health = mg_saoluu_restore_health_check($target_env !== 'production' ? $target_home : '');
         if (is_wp_error($health)) throw new RuntimeException($health->get_error_message());
+        if ($rollback_restore) {
+            $journal['rollback_removed_new_file_count'] = mg_saoluu_remove_previous_restore_files($previous_journal);
+        }
         $journal['status'] = 'completed'; $journal['completed_at'] = current_time('mysql'); mg_saoluu_restore_journal($journal); mg_saoluu_debug_log('restore_complete',['type'=>$type]);
     } catch (Throwable $e) {
         $error = new WP_Error('restore_failed', $e->getMessage());
