@@ -9,13 +9,21 @@ if (!defined('ABSPATH')) { exit; }
  * Existing live websites with customers/orders are never migration targets.
  */
 function mg_saoluu_migration_production_gate() {
-    if (mg_saoluu_environment() !== 'production') {
-        return new WP_Error('migration_target_environment', 'Chỉ dùng chuyển site lên website đích production.');
+    $env = mg_saoluu_environment();
+    $host = mg_saoluu_host();
+    // The ONLY RC write path is an explicitly marked staging clone whose
+    // canonical hostname starts with stage/staging/sandbox/test.
+    $qa = $env === 'staging'
+        && defined('MG_SAOLUU_MIGRATION_QA_MODE') && MG_SAOLUU_MIGRATION_QA_MODE === true
+        && defined('WP_ENVIRONMENT_TYPE') && WP_ENVIRONMENT_TYPE === 'staging'
+        && preg_match('/^(?:stage|staging|sandbox|test)[.-]/i', $host);
+    if ($env !== 'production' && !$qa) {
+        return new WP_Error('migration_target_environment', 'Chỉ dùng trên production được duyệt hoặc clone Staging được phép QA.');
     }
-    if (strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-        return new WP_Error('migration_rc_locked', 'Bản RC chỉ cho phép thử chuyển site trên clone. Chưa mở ghi production.');
+    if (!$qa && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
+        return new WP_Error('migration_rc_locked', 'Bản RC vẫn khóa toàn bộ ghi production.');
     }
-    if (!defined('MG_SAOLUU_ENABLE_PRODUCTION_MIGRATION') || MG_SAOLUU_ENABLE_PRODUCTION_MIGRATION !== true) {
+    if (!$qa && (!defined('MG_SAOLUU_ENABLE_PRODUCTION_MIGRATION') || MG_SAOLUU_ENABLE_PRODUCTION_MIGRATION !== true)) {
         return new WP_Error('migration_optin_missing', 'Chưa cho phép chuyển site trên máy chủ đích qua cấu hình riêng.');
     }
     if (!mg_saoluu_request_host_is_canonical()) {
