@@ -172,6 +172,24 @@ test('maintenance symlink cannot overwrite outside sentinel',
     && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
 @unlink(ABSPATH . '.maintenance');
 
+// A stale or manually posted RC approval form must be rejected server-side, not merely hidden.
+function current_user_can($cap) { return $cap === 'manage_options'; }
+function check_admin_referer($nonce, $field = '') { return true; }
+function wp_unslash($value) { return $value; }
+require_once MG_SAOLUU_DIR . 'admin/actions.php';
+$initial_method = $_SERVER['REQUEST_METHOD'] ?? null;
+$_SERVER['REQUEST_METHOD'] = 'POST';
+foreach (['security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval'] as $blocked_action) {
+    $_POST = ['mg_action' => $blocked_action, 'mg_nonce' => 'fixture'];
+    $rc_message = ''; $rc_status = '';
+    mg_saoluu_handle_actions($rc_message, $rc_status);
+    test('RC prevents approval POST: ' . $blocked_action,
+        $rc_status === 'error' && str_contains($rc_message, 'Bản RC'));
+}
+$_POST = [];
+if ($initial_method === null) unset($_SERVER['REQUEST_METHOD']);
+else $_SERVER['REQUEST_METHOD'] = $initial_method;
+
 test('debug enabled on clone',mg_saoluu_debug_enabled()===true);
 test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
 test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
