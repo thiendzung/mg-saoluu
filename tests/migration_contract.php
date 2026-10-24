@@ -40,6 +40,20 @@ check('signed migration rewrites domain on production',
 check('disable URL checkbox always prevents rewriting',
     mg_saoluu_restore_should_change_url(false, 'production', ['nonce' => 'verified']) === false);
 
+$url_pairs = mg_saoluu_restore_url_pairs(
+    'https://abc.test/', 'https://abc.test/wp/',
+    'https://new.example.com/', 'https://new.example.com/core/'
+);
+check('URL migration uses slashless canonical bases',
+    isset($url_pairs['https://abc.test'])
+    && $url_pairs['https://abc.test'] === 'https://new.example.com'
+    && !isset($url_pairs['https://abc.test/']));
+check('WordPress core subdirectory URL is replaced before shorter home URL',
+    array_key_first($url_pairs) === 'https://abc.test/wp'
+    && $url_pairs['https://abc.test/wp'] === 'https://new.example.com/core');
+$same_pairs = mg_saoluu_restore_url_pairs('https://a.test/','https://a.test/','https://b.example/','https://b.example/');
+check('duplicate home/site URL becomes one replacement pair', count($same_pairs) === 1);
+
 $_SERVER['HTTP_HOST'] = 'new.example.com';
 check('canonical host from WordPress settings', mg_saoluu_host() === 'new.example.com');
 check('matching request host accepted', mg_saoluu_request_host_is_canonical());
