@@ -13,7 +13,7 @@ if [ "$#" -eq 1 ] && { [ -e "$1" ] || [ -L "$1" ]; }; then
 fi
 
 ROOT=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/mgsl-rc7-verify.XXXXXX")
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/mgsl-rc8-verify.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -28,7 +28,7 @@ php tests/contract.php
 php tests/contract.php --unsafe-config
 php tests/schedule_health.php
 
-ZIP="$TMP/mg-saoluu-v1.2.1-rc7.zip"
+ZIP="$TMP/mg-saoluu-v1.2.1-rc8.zip"
 echo "=== PACKAGE: deterministic ZIP + CRC/payload ==="
 python3 scripts/package_release.py --out "$ZIP"
 unzip -t "$ZIP"
