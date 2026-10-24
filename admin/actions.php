@@ -420,8 +420,18 @@ function mg_saoluu_handle_actions(&$message, &$status) {
             $change_url = isset($_POST['change_url']);
             $password = (string) wp_unslash($_POST['backup_password'] ?? '');
             $result = mg_saoluu_restore_zip($path, $restore_files, $change_url, $password);
-            if (is_wp_error($result)) { $status = 'error'; $message = $result->get_error_message(); }
-            else { mg_saoluu_log_event('restore_saved', 'Khôi phục bản đang lưu', ['file' => $name]); $status = 'success'; $message = 'Khôi phục thành công. Bản dự phòng trước khôi phục: ' . $result['pre_backup']; }
+            if (is_wp_error($result)) {
+                $status = 'error';
+                $message = $result->get_error_message();
+            } elseif (($result['operation'] ?? 'restore') === 'rollback') {
+                mg_saoluu_log_event('rollback_saved', 'Đã áp dụng checkpoint rollback', ['file' => $name]);
+                $status = 'success';
+                $message = 'Rollback thành công về checkpoint: ' . ($result['rollback_checkpoint'] ?? $name) . '.';
+            } else {
+                mg_saoluu_log_event('restore_saved', 'Khôi phục bản đang lưu', ['file' => $name]);
+                $status = 'success';
+                $message = 'Khôi phục thành công. Bản dự phòng trước khôi phục: ' . $result['pre_backup'];
+            }
             return;
         }
 
