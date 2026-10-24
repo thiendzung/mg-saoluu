@@ -128,6 +128,32 @@ test('reject symlink pointing into webroot',!mg_saoluu_storage_path_safe($root.'
 test('accept real external directory',mg_saoluu_storage_path_safe($root.'/outside/vault'));
 test('reject relative path',!mg_saoluu_storage_path_safe('wp-content/backups'));
 
+$options_before_private_state = $GLOBALS['test_options'];
+$private_state_write = mg_saoluu_private_state_write('migration-nonces.json', [
+    str_repeat('a', 48) => ['at' => 1, 'sha256' => str_repeat('b', 64)]
+]);
+$private_state_path = mg_saoluu_private_state_path('migration-nonces.json');
+test('private operational state writes outside webroot without touching wp_options',
+    $private_state_write === true
+    && is_string($private_state_path)
+    && str_starts_with($private_state_path, $external)
+    && !mg_saoluu_storage_is_inside($private_state_path, ABSPATH)
+    && $GLOBALS['test_options'] === $options_before_private_state);
+test('private operational state is mode 0600 and roundtrips JSON',
+    substr(sprintf('%o', fileperms($private_state_path)), -4) === '0600'
+    && isset(mg_saoluu_private_state_read('migration-nonces.json')[str_repeat('a', 48)]));
+$private_state_delete = mg_saoluu_private_state_delete('migration-nonces.json');
+test('private operational state can be removed safely', $private_state_delete === true && !file_exists($private_state_path));
+$private_state_sentinel = $root . '/outside/private-state-sentinel.txt';
+file_put_contents($private_state_sentinel, 'PRIVATE-STATE-SENTINEL');
+symlink($private_state_sentinel, $private_state_path);
+$private_state_link = mg_saoluu_private_state_write('migration-nonces.json', []);
+test('private operational state refuses symlink leaf',
+    is_wp_error($private_state_link)
+    && $private_state_link->get_error_code()==='private_state_unsafe'
+    && file_get_contents($private_state_sentinel)==='PRIVATE-STATE-SENTINEL');
+@unlink($private_state_path);
+
 // Two-volume space budget must fail closed before touching a WordPress DB.
 $MiB = 1024 * 1024;
 $separate_small = mg_saoluu_restore_space_budget(600*$MiB, 30*$MiB, false, 300*$MiB, 100*$MiB);
@@ -359,6 +385,13 @@ $GLOBALS['test_options']['stylesheet']='';
 
 test('debug enabled on clone',mg_saoluu_debug_enabled()===true);
 test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
+$lifecycle_php = file_get_contents(MG_SAOLUU_DIR . 'includes/lifecycle.php');
+$render_php = file_get_contents(MG_SAOLUU_DIR . 'admin/render.php');
+test('audit log writes private state instead of wp_options',
+    str_contains($lifecycle_php, "mg_saoluu_private_state_write('audit-log.json'")
+    && !str_contains($lifecycle_php, "update_option('mg_saoluu_audit_log'"));
+test('security UI reads private plus legacy audit history',
+    str_contains($render_php, 'mg_saoluu_audit_log_read()'));
 test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
 test('debug file outside webroot',mg_saoluu_storage_path_safe(mg_saoluu_debug_file()));
 test('debug log excludes password',!str_contains(file_get_contents(mg_saoluu_debug_file()),'secret'));
