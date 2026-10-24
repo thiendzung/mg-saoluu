@@ -35,8 +35,8 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#release/v}"
-          if [[ "$version" != "1.3.0-rc1" ]]; then
-            echo "This RC workflow is limited to v1.3.0-rc1; refusing unexpected branch." >&2
+          if [[ "$version" != "1.3.0-rc2" ]]; then
+            echo "This RC workflow is limited to v1.3.0-rc2; refusing unexpected branch." >&2
             exit 1
           fi
           python3 - "$version" <<'PY'
@@ -61,12 +61,12 @@ jobs:
         run: |
           set -euo pipefail
           zipfile="$RUNNER_TEMP/mg-saoluu-v$VERSION.zip"
-          sh scripts/verify_rc3_release.sh "$zipfile" | tee "$RUNNER_TEMP/mgsl-rc7-gates.log"
-          test "$(grep -Fc 'TESTS 104/104 PASS' "$RUNNER_TEMP/mgsl-rc7-gates.log")" -eq 2
-          test "$(grep -Fc 'TESTS 4/4 PASS' "$RUNNER_TEMP/mgsl-rc7-gates.log")" -eq 2
-          test "$(grep -Fc 'MIGRATION TESTS 24/24 PASS' "$RUNNER_TEMP/mgsl-rc7-gates.log")" -eq 2
-          test "$(grep -Fc 'QA GATE TESTS 3/3 PASS' "$RUNNER_TEMP/mgsl-rc7-gates.log")" -eq 2
-          test "$(grep -Fc 'PASS integrity manifest matches 28 source files' "$RUNNER_TEMP/mgsl-rc7-gates.log")" -eq 2
+          sh scripts/verify_rc3_release.sh "$zipfile" | tee "$RUNNER_TEMP/mgsl-rc8-gates.log"
+          test "$(grep -Fc 'TESTS 106/106 PASS' "$RUNNER_TEMP/mgsl-rc8-gates.log")" -eq 2
+          test "$(grep -Fc 'TESTS 4/4 PASS' "$RUNNER_TEMP/mgsl-rc8-gates.log")" -eq 2
+          test "$(grep -Fc 'MIGRATION TESTS 24/24 PASS' "$RUNNER_TEMP/mgsl-rc8-gates.log")" -eq 2
+          test "$(grep -Fc 'QA GATE TESTS 3/3 PASS' "$RUNNER_TEMP/mgsl-rc8-gates.log")" -eq 2
+          test "$(grep -Fc 'PASS integrity manifest matches 28 source files' "$RUNNER_TEMP/mgsl-rc8-gates.log")" -eq 2
           unzip -t "$zipfile" >/dev/null
           cd "$RUNNER_TEMP"
           sha256sum "mg-saoluu-v$VERSION.zip" > "mg-saoluu-v$VERSION.zip.sha256"

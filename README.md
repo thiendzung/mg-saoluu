@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.3.0-rc1 (pre-release; backup/restore + fresh-site migration candidate)
+# MG Sao Lưu v1.3.0-rc2 (pre-release; backup/restore + fresh-site migration candidate)
 
 WordPress Backup → Verify → Store → Restore. This candidate adds an opt-in, signed Local → **fresh** Production migration path. All production restore/migration writes stay hard-locked in RC. It does not sync existing customer/order data.
 
@@ -20,7 +20,7 @@ Plugin debug runs by default on Local/Staging only, OFF on Production, files sto
 
 See [release QA](docs/RELEASE_QA.md) and [recovery runbook](RECOVERY_RUNBOOK.md).
 
-### v1.3.0-rc1 limitations
+### v1.3.0-rc2 limitations
 Complex PHP-serialized values containing unavailable plugin objects, enums, cyclic references or excessively deep structures are kept unchanged during URL replacement to prevent corruption. Inspect remaining old URLs on the restored clone; do not treat this pre-release as proof of complete URL migration.
 
 

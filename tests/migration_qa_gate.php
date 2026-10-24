@@ -6,7 +6,7 @@ define('DB_HOST', 'mysql.test.internal');
 define('WP_ENVIRONMENT_TYPE', 'staging');
 define('MG_SAOLUU_MIGRATION_QA_MODE', true);
 define('DISABLE_WP_CRON', true);
-define('MG_SAOLUU_VERSION', '1.3.0-rc1');
+define('MG_SAOLUU_VERSION', '1.3.0-rc2');
 $GLOBALS['qa_url'] = 'https://staging.example.com';
 $GLOBALS['qa_count'] = 0;
 function add_action(...$args) {}

@@ -3,10 +3,10 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.3.0-rc1
+Stable tag: 1.3.0-rc2
 License: GPLv2 or later
 
-MG Sao Luu v1.3.0-rc1 la pre-release thu nghiem Backup, Verify, Restore va Local -> Production migration tren clone.
+MG Sao Luu v1.3.0-rc2 la pre-release thu nghiem Backup, Verify, Restore va Local -> Production migration tren clone.
 
 == Description ==
 
@@ -29,7 +29,7 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 
 == Changelog ==
 
-= 1.3.0-rc1 =
+= 1.3.0-rc2 =
 * Local -> new production encrypted migration package with target-bound Ed25519 single-use approval.
 * Canonical WordPress domain protects restore environment from spoofed Host header.
 * Strict destination empty-site, Woo HPOS, matching DB prefix and archive checksum gates.

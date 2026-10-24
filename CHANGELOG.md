@@ -1,3 +1,9 @@
+## 1.3.0-rc2 — Migration rollback inventory hardening (2026-10-24)
+
+- Keep the currently running MG Sao Luu plugin out of both migration file copy and rollback-new inventory.
+- Add explicit regressions proving signed production migration can rewrite domain while ordinary production restore cannot.
+- Preserve all RC production write locks; runtime acceptance remains staging-only until independently verified.
+
 ## 1.3.0-rc1 — Fresh-site migration architecture, signed and fail-closed (2026-10-24)
 
 - Derive identity from WordPress canonical URL, never blindly from an inbound Host header; mismatched requests cannot impersonate Local.
