@@ -1,3 +1,12 @@
+## 1.3.0-rc4 — Exact database schema rollback (2026-10-25)
+
+- Fix RC3 runtime blocker where checkpoint import restored baseline rows but left database tables created by migration.
+- Persist the exact pre-Restore database table/view inventory in the restore journal.
+- On explicit or automatic rollback: import checkpoint, remove extra schema objects, then require exact inventory equality before health/success.
+- Fail closed when schema inventory is missing, unsafe, cannot be reconciled, or remains mismatched.
+- Regression test reproduces the Agent Local evidence: 12 baseline objects → 83 after migration → remove 71 → exact 12 after rollback.
+- Production mutation remains hard-blocked in RC4.
+
 ## 1.3.0-rc3 — Migration rebased on Stable Backup/Restore (2026-10-25)\n\n- Rebase the signed Local → fresh Production migration design from 1.3.0-rc2 onto the fully runtime-accepted v1.2.1 Backup/Restore tree.\n- Preserve RC7–RC9 hardening: truthful schedule/offsite status, transactional rollback, timezone-safe duration, healthy-baseline gate and restore-engine self-protection.\n- Migration requires canonical host, matching DB prefix, fresh target including Woo HPOS/order checks, HTTPS public target, paired Local Ed25519 signature bound to exact archive SHA/source/target, 10-minute single-use nonce, disabled WP-Cron and explicit external-I/O isolation.\n- RC3 still hard-blocks all writes to real Production; only isolated Staging QA may exercise mutation.\n- Performance: Local Backup tab reads migration candidates from metadata only; DB freshness checks run only on Stage/Apply actions.\n\n## 1.2.1 — Stable Backup & Restore (2026-10-24)
 
 - Promote the runtime-accepted RC9 Backup/Restore tree to Stable; no Data Transfer/Deploy features are re-enabled.
