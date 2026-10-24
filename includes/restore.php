@@ -959,8 +959,6 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
             if ($prepared['temporary']) @unlink($zip_file);
             return $consume;
         }
-        // Keep the consumed nonce after importing the Local options table.
-        $target_settings['options']['mg_saoluu_used_migration_nonces'] = get_option('mg_saoluu_used_migration_nonces', []);
     }
     $source_home = (string) ($manifest['source_url'] ?? '');
     $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
