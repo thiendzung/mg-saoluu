@@ -58,7 +58,8 @@ function cleanup($dir){
 register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
-define('MG_SAOLUU_VERSION', '1.2.1-rc8');
+define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
+define('MG_SAOLUU_VERSION', '1.2.1-rc9');
 function add_action(){}
 function mg_saoluu_environment(){return 'local';}
 function mg_saoluu_is_local_environment(){return true;}
@@ -138,6 +139,47 @@ file_put_contents($restore_stage . '/wp-content/uploads/ordinary.txt', 'ordinary
 $ordinary_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
 test('ordinary restore destination passes', $ordinary_copy === true && file_get_contents($restore_target_dir . '/ordinary.txt') === 'ordinary-content');
 @unlink($restore_target_dir . '/ordinary.txt');
+
+// A full backup may contain an older MG Sao Luu copy, but restore must never
+// overwrite the plugin code currently executing the transaction.
+$self_runtime = dirname(MG_SAOLUU_FILE);
+wp_mkdir_p($self_runtime . '/includes');
+file_put_contents(MG_SAOLUU_FILE, 'RC9-ACTIVE');
+file_put_contents($self_runtime . '/includes/runtime.php', 'RC9-INCLUDES-ACTIVE');
+wp_mkdir_p($restore_stage . '/wp-content/plugins/mg-saoluu/includes');
+file_put_contents($restore_stage . '/wp-content/plugins/mg-saoluu/mg-saoluu.php', 'RC7-ARCHIVED');
+file_put_contents($restore_stage . '/wp-content/plugins/mg-saoluu/includes/runtime.php', 'RC7-ARCHIVED-INCLUDE');
+file_put_contents($restore_stage . '/wp-content/plugins/mg-saoluu/includes/legacy-only.php', 'OLD-ONLY');
+$self_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
+test('runtime plugin files are skipped during stage copy',
+    $self_copy === true
+    && file_get_contents(MG_SAOLUU_FILE) === 'RC9-ACTIVE'
+    && file_get_contents($self_runtime . '/includes/runtime.php') === 'RC9-INCLUDES-ACTIVE'
+    && !file_exists($self_runtime . '/includes/legacy-only.php'));
+$self_new = mg_saoluu_stage_new_files($restore_stage);
+test('runtime plugin paths are excluded from rollback new-file bookkeeping',
+    is_array($self_new)
+    && !in_array('wp-content/plugins/mg-saoluu/includes/legacy-only.php', $self_new, true));
+$self_cleanup = mg_saoluu_remove_new_restore_files(['wp-content/plugins/mg-saoluu/mg-saoluu.php']);
+test('rollback cleanup refuses to delete the running plugin',
+    $self_cleanup['requested'] === 1 && $self_cleanup['failed'] === 1
+    && file_get_contents(MG_SAOLUU_FILE) === 'RC9-ACTIVE');
+
+// Extraction also skips the running plugin before it can reach the staged tree.
+$self_zip = $root . '/self-protection.zip';
+$self_extract_stage = $root . '/self-extract/';
+wp_mkdir_p($self_extract_stage);
+$z = new ZipArchive();
+$z->open($self_zip, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+$z->addFromString('database_backup.sql', 'CREATE TABLE fixture (id INT);');
+$z->addFromString('wp-content/plugins/mg-saoluu/mg-saoluu.php', 'RC7-ZIP');
+$z->addFromString('wp-content/uploads/keep.txt', 'ordinary');
+$z->close();
+$self_extract = mg_saoluu_extract_to_stage($self_zip, $self_extract_stage, true);
+test('restore extraction excludes archived copy of running plugin',
+    $self_extract === true
+    && !file_exists($self_extract_stage . 'wp-content/plugins/mg-saoluu/mg-saoluu.php')
+    && file_get_contents($self_extract_stage . 'wp-content/uploads/keep.txt') === 'ordinary');
 
 $leaf_link = $restore_target_dir . '/leaf-link.txt';
 file_put_contents($restore_stage . '/wp-content/uploads/leaf-link.txt', 'must-not-follow-leaf-link');
@@ -553,5 +595,7 @@ test('UI reports linked checkpoint and cleanup result', str_contains($ux_php, 'c
 test('UI uses timezone-safe restore duration helper and truthful failed-rollback warning',
     str_contains($ux_php, 'mg_saoluu_restore_duration_seconds')
     && str_contains($ux_php, 'rollback_attempt_failed_reverted'));
+test('restore engine protects its own running plugin from archived downgrade',
+    str_contains(file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php'), 'mg_saoluu_is_runtime_self_path'));
 // No real WordPress/DBngin/cPanel integration was performed by this mock harness.
 echo "TESTS ".$GLOBALS['test_count']."/".$GLOBALS['test_count']." PASS\n";
