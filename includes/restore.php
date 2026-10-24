@@ -135,6 +135,23 @@ function mg_saoluu_extract_to_stage($zip_file, $stage_dir, $include_files) {
     return true;
 }
 
+/**
+ * Files belonging to the currently running MG Sao Luu plugin are never copied
+ * from a migration archive and therefore must never be tracked as rollback-new.
+ */
+function mg_saoluu_migration_protected_file($relative) {
+    $relative = ltrim(wp_normalize_path((string) $relative), '/');
+    $standard = 'wp-content/plugins/mg-saoluu/';
+    if (strpos($relative, $standard) === 0) return true;
+    $plugin_dir = rtrim(wp_normalize_path(MG_SAOLUU_DIR), '/') . '/';
+    $root = rtrim(wp_normalize_path(ABSPATH), '/') . '/';
+    if (strpos($plugin_dir, $root) === 0) {
+        $dynamic = ltrim(substr($plugin_dir, strlen($root)), '/');
+        if ($dynamic !== '' && strpos($relative, $dynamic) === 0) return true;
+    }
+    return false;
+}
+
 function mg_saoluu_copy_stage_files($stage_dir, $backup_type, $is_migration = false) {
     try {
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($stage_dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::LEAVES_ONLY);
@@ -145,7 +162,7 @@ function mg_saoluu_copy_stage_files($stage_dir, $backup_type, $is_migration = fa
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
             if (mg_saoluu_is_excluded_path($relative, $backup_type === 'local_copy' ? 'local_copy' : 'safe_full')) continue;
             // Migration never replaces the plugin enforcing this write gate.
-            if ($is_migration && strpos($relative, 'wp-content/plugins/mg-saoluu/') === 0) continue;
+            if ($is_migration && mg_saoluu_migration_protected_file($relative)) continue;
             $guard = mg_saoluu_restore_destination_check($relative);
             if (is_wp_error($guard)) return $guard;
             $target = $guard['path'];
@@ -511,7 +528,7 @@ function mg_saoluu_validate_restore_destinations($stage_dir, $backup_type) {
     return true;
 }
 
-function mg_saoluu_stage_new_files($stage_dir) {
+function mg_saoluu_stage_new_files($stage_dir, $is_migration = false) {
     $new = [];
     try {
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($stage_dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::LEAVES_ONLY);
@@ -520,6 +537,7 @@ function mg_saoluu_stage_new_files($stage_dir) {
             $path = wp_normalize_path($file->getPathname());
             $relative = ltrim(substr($path, strlen(wp_normalize_path($stage_dir))), '/');
             if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+            if ($is_migration && mg_saoluu_migration_protected_file($relative)) continue;
             $guard = mg_saoluu_restore_destination_check($relative);
             if (is_wp_error($guard)) return $guard;
             if (!$guard['exists']) $new[] = $relative;
@@ -759,7 +777,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     if (is_wp_error($stage)) { if ($prepared['temporary']) @unlink($zip_file); return $stage; }
     $extract = mg_saoluu_extract_to_stage($zip_file, $stage, $restore_files);
     if (is_wp_error($extract)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $extract; }
-    $new_files = $restore_files ? mg_saoluu_stage_new_files($stage) : [];
+    $new_files = $restore_files ? mg_saoluu_stage_new_files($stage, $migration_approval !== null) : [];
     if (is_wp_error($new_files)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $new_files; }
     if ($restore_files) {
         $destinations = mg_saoluu_validate_restore_destinations($stage, $type);
