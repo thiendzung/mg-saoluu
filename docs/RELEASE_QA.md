@@ -1,38 +1,76 @@
-# MG Sao Lưu v1.2.1-rc3 — Clone trial gate
+# MG Sao Lưu v1.2.1 — Stable release gate
 
-**State:** Agent Local reports the clone restore and Issue #8 safety drill PASS at exact HEAD `19035d9af2a81bc97ffb0b7e3c6d892151a8f384`; this evidence does not automatically cover later review fixes. Production RESTORE remains BLOCKED in RC.
+## State
 
-## New first-trial functions
-- Encrypted `local_copy` Host-to-Local package from Admin Backup.
-- Nonproduction UI form to import uploaded `.mgbackup` / `.zip` archive on separate clone.
-- Private structured JSONL: default on Local/Staging, off on Production (unless explicit `MG_SAOLUU_DEBUG` true), outside webroot, capped and rolled. Log stores allowlisted stage names and counts, not credentials.
-- Reject duplicate ZIP paths and incomplete extraction streams. Existing safety gates (prefix, prebackup, RC production restore lock) preserved.
+RC9 Backup/Restore runtime acceptance completed on an isolated WordPress + database clone.
 
-## Final review / release acceptance
-- Run `sh scripts/verify_rc3_release.sh` from a clean disposable checkout at the **latest exact HEAD**. It executes PHP lint, integrity and contracts on source and again against the **extracted final ZIP** (including the 4 unsafe-config tests). Store the command exit status, final ZIP SHA256 and sanitized output.
-- The RC user interface must state **production restore locked** without offering a misleading Local-approval workflow. Direct/stale `security_*restore*` POST requests cannot unlock it. The underlying restore hard-block must remain.
-- The maintenance marker `.maintenance` must fail closed on write failure and report cleanup failure instead of falsely confirming restore success. Validate a negative test on a disposable clone.
-- **Network isolation is a separate runtime gate:** do not accept a copied Woo DB until outbound SMTP, payment gateways, webhooks and Action Scheduler/cron have been disabled or blocked externally and verified by a controlled test. `pre_wp_mail` alone does **not** prove isolation.
-- Physical disk exhaustion was not performed; **simulated low-disk preflight is not equivalent**. Keep this limitation in the release decision and avoid claims of crash-atomic rollback.
-- For debugging, use structured plugin JSONL and WordPress PHP logs **outside webroot** on clones; verify redaction. Do not enable production debug/restore.
-- All evidence must cite the exact source SHA and extracted ZIP SHA; previous SHA reports are not transferable.
+Accepted functional runtime source:
 
-## Source and packaged checks
-Run on exact branch SHA, and repeat on extracted ZIP:
+`3952bac938b8ce934d16e6a061cd4a123f12639b`
+
+Final reviewed RC9 PR head:
+
+`81e67b3bdbbf1a29d8aa9118ca1a27a16a928606`
+
+The only changes between those two RC9 heads were `readme.txt` changelog labels and the matching integrity hash. RC9 was merged to `main` as:
+
+`e407e1c19912a3e0647bc8f1c65a9d4813a9c4b4`
+
+The Stable release branch starts from that exact merge tree. Stable promotion must not re-enable Data Transfer/Deploy.
+
+## Runtime evidence already accepted
+
+- Encrypted SQL backup: verified and download SHA matched.
+- Encrypted Full backup: verified and download SHA matched.
+- Full Restore: PASS on independent clone; posts/media/products/Artwork/HPOS, URL rewrite, theme and health verified.
+- Explicit Rollback: PASS; journal `rolled_back`, `rollback_attempt_status=succeeded`, baseline DB/files restored, cleanup truthful.
+- Running restore engine remained unchanged when archive contained an older MG Sao Lưu plugin.
+- Runtime negative tests PASS: wrong Recovery Key, corrupt encrypted backup, duplicate ZIP, wrong DB prefix, symlink leaf, symlink ancestor, missing mysql CLI, simulated low disk and operation lock contention.
+- Debug JSONL redaction: no sensitive matches.
+- Interrupted import/rollback: NOT TESTED because no safe deterministic fault-injection mechanism exists. Do not simulate by killing MySQL/PHP processes.
+
+## Stable production restore policy
+
+Stable removes the RC-only hard block, but production restore remains fail-closed unless all applicable gates pass:
+
+1. Environment is actually Production.
+2. A paired Local device signs a restore challenge; unlock lasts 10 minutes.
+3. Administrator re-enters current password.
+4. Administrator enters the exact production host and confirmation phrase.
+5. Backup source environment is Production and source host exactly matches the current host.
+6. Manifest signature verifies for the current site.
+7. Self-integrity, storage, CLI, disk, prefix, baseline-health and operation-lock preflights pass.
+8. A pre-restore checkpoint is created before DB/files are changed.
+
+Production restore is **same-host disaster recovery**, not Local → live synchronization or migration.
+
+## Exact Stable package gate
+
+From a clean checkout at the exact Stable PR HEAD run:
+
 ```sh
-find . -type f -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
-php tests/contract.php
-php tests/contract.php --unsafe-config
-python3 scripts/package_release.py --out ../mg-saoluu-v1.2.1-rc3.zip
+sh scripts/verify_rc3_release.sh /ABSOLUTE/PRIVATE/NEW/mg-saoluu-v1.2.1.zip
 ```
-The integrity manifest must be refreshed for reviewed new source before packaging, without introducing unexpected files.
 
-## Runtime acceptance — Agent Local (required)
-1. Isolated WordPress 7.1+, PHP 8.3+, MariaDB/MySQL, mysql/mysqldump, OpenSSL and ZipArchive. Two separate disposable WP clones and database users.
-2. On source clone, create encrypted local_copy, verify, download; retain Recovery Key.
-3. On second clone, import with source key + URL migration; verify GUID unchanged, Woo HPOS, CPT/metadata, uploads and theme/plugin files.
-4. Failure drills: wrong key, corrupt/duplicate ZIP, wrong prefix, missing binary, disk full, interrupted SQL import/rollback; parallel lock.
-5. Collect sanitized plugin diagnostic log and WP native PHP log only if enabled in private clone config.
-6. Optional Drive manual roundtrip compare SHA256; direct Drive download/restore not built.
+Require:
 
-Do not touch canonical motgu.test or motgu.com. No production restore, merge or live cron until reviewed evidence and Founder approval.
+- source PHP lint PASS;
+- integrity manifest PASS;
+- contract tests PASS, including Stable production lock/unlock regression;
+- unsafe-config tests PASS;
+- schedule-health tests PASS;
+- deterministic ZIP build + CRC/payload PASS;
+- the same checks PASS against the extracted ZIP;
+- final ZIP SHA-256 recorded.
+
+Any mismatch between source SHA, package SHA, header version and integrity version is NO-GO.
+
+## Release boundary
+
+- No `motgu.test`, `motgu.com`, AZDIGI, DNS, database or production cron changes are part of this release operation.
+- Do not upgrade unrelated plugins such as Ego Lite during release QA.
+- Do not enable production debug by default.
+- Google Drive upload remains offsite storage; an upload alone is not proof of recoverability.
+- Keep hosting-level backups/JetBackup independently.
+
+A GitHub Stable release/tag is created only after the exact Stable PR HEAD passes CI and the merged Stable tree matches the reviewed release branch.

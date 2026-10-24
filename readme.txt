@@ -3,10 +3,10 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.2.1-rc9
+Stable tag: 1.2.1
 License: GPLv2 or later
 
-MG Sao Luu v1.2.1-rc9 la pre-release thu nghiem Backup, Verify, Store, Restore tren clone.
+MG Sao Luu v1.2.1: Backup, Verify, Store, Restore co kiem soat va rollback.
 
 == Description ==
 
@@ -28,6 +28,12 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 5. Keep hosting JetBackup + offsite independently. Production only after separate acceptance.
 
 == Changelog ==
+
+= 1.2.1 =
+* Stable Backup/Restore release after isolated-clone runtime acceptance through RC9.
+* Production restore is same-host only and requires a valid manifest signature, paired Local signed approval, admin password, host and confirmation phrase.
+* Transactional rollback, self-plugin protection, fail-closed ZIP/prefix/symlink/CLI/disk/lock gates and truthful schedule/offsite status retained.
+
 
 = 1.2.1-rc9 =
 * Keep the currently running MG Sao Luu plugin version intact during Restore/Rollback, even if the backup contains an older copy.
