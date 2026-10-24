@@ -167,6 +167,10 @@ function mg_saoluu_recursive_replace($old, $new, $value) {
             // Không gọi __wakeup/__unserialize từ dữ liệu nhập vào. Object tuần tự được giữ nguyên để tránh chạy mã ngoài ý muốn.
             if (preg_match('/^(?:O|C):/', $value)) return $value;
             $unserialized = @unserialize($value, ['allowed_classes' => false]);
+            // A serialized array may contain an object even when it starts with "a:".
+            // With allowed_classes=false PHP returns __PHP_Incomplete_Class; never
+            // mutate or reserialize that value because it would corrupt the payload.
+            if (mg_saoluu_contains_incomplete_object($unserialized)) return $value;
             if ($unserialized !== false || $value === 'b:0;') return serialize(mg_saoluu_recursive_replace($old, $new, $unserialized));
         }
         return str_replace([$old, str_replace('/', '\\/', $old)], [$new, str_replace('/', '\\/', $new)], $value);
@@ -174,6 +178,14 @@ function mg_saoluu_recursive_replace($old, $new, $value) {
     if (is_array($value)) { foreach ($value as $k => $v) $value[$k] = mg_saoluu_recursive_replace($old, $new, $v); return $value; }
     if (is_object($value)) { foreach (get_object_vars($value) as $k => $v) $value->$k = mg_saoluu_recursive_replace($old, $new, $v); return $value; }
     return $value;
+}
+
+function mg_saoluu_contains_incomplete_object($value) {
+    if (is_object($value)) return get_class($value) === '__PHP_Incomplete_Class';
+    if (is_array($value)) {
+        foreach ($value as $item) if (mg_saoluu_contains_incomplete_object($item)) return true;
+    }
+    return false;
 }
 
 /**

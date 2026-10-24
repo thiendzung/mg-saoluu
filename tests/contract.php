@@ -302,6 +302,11 @@ test('URL replace each row only once',count($wpdb->updates)===151&&max($wpdb->up
 test('WordPress post guid unchanged',$wpdb->rows[3]['guid']==='https://a.test/?p=3');
 test('serialized data portable',unserialize($wpdb->rows[1]['post_content'])['url']==='https://a.test.preview/p/1');
 
+// Serialized arrays can contain plugin objects whose class is unavailable during a safe URL move.
+$object_payload = 'a:1:{s:5:"cache";O:20:"Astra_Builder_Header":1:{s:3:"url";s:16:"https://a.test/x";}}';
+$object_replaced = mg_saoluu_recursive_replace('https://a.test','https://a.test.preview',$object_payload);
+test('serialized incomplete object payload is not mutated', $object_replaced === $object_payload);
+
 // New backups carry source table prefix; incompatible clone imports fail before DB writes.
 $ok=mg_saoluu_backup_prefix_preflight(['db_table_prefix'=>'wp_'],'wp_',true);
 test('matching prefix allowed',$ok===true);
