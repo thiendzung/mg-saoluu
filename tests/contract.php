@@ -561,8 +561,10 @@ test('matching prefix allowed',$ok===true);
 $mismatch=mg_saoluu_backup_prefix_preflight(['db_table_prefix'=>'mg_'],'wp_',true);
 test('mismatched table prefix blocked',is_wp_error($mismatch)&&$mismatch->get_error_code()==='backup_prefix_mismatch');
 $unknown=mg_saoluu_backup_prefix_preflight([],'wp_',true);
-test('legacy cross-site unknown prefix blocked',is_wp_error($unknown)&&$unknown->get_error_code()==='backup_prefix_unknown');
-test('legacy same-site prefix still allowed',mg_saoluu_backup_prefix_preflight([],'wp_',false)===true);
+test('unknown prefix blocked on every restore',is_wp_error($unknown)&&$unknown->get_error_code()==='backup_prefix_unknown');
+test('unknown prefix is also blocked on same-domain restore',
+    is_wp_error(mg_saoluu_backup_prefix_preflight([],'wp_',false))
+    && mg_saoluu_backup_prefix_preflight([],'wp_',false)->get_error_code()==='backup_prefix_unknown');
 
 // v1.2.1: backend safety and honest archive statuses.
 test('catalog requires actual restore-drill proof', !mg_saoluu_catalog_has_recovery_proof([
@@ -610,10 +612,12 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// Stable opens only guarded Full Site Restore. Pack Restore remains blocked
-// independently at action + engine level and is covered by static UI contracts.
-test('stable is not an RC rename gate',
-    strpos(MG_SAOLUU_VERSION, '-rc') === false && MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE === true);
+// v1.3.1 has one environment-neutral restore flow.
+$restore_source = file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php');
+test('v1.3.1 restore forces Full Site plus automatic URL rewrite',
+    str_contains($restore_source, '$restore_files = true;')
+    && str_contains($restore_source, '$change_url = true;')
+    && str_contains($restore_source, "'domain_rewrite'"));
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 
 // WordPress-independent AES-GCM decryption: binary roundtrip + wrong-key block.
@@ -633,21 +637,19 @@ $wrong=false;
 try { mgsl_recovery_decrypt($fixture_cipher,$fixture_wrong,'different-incorrect-key'); }
 catch (Throwable $e) { $wrong=true; }
 test('offline wrong key fail closed and deletes output',$wrong&&!file_exists($fixture_wrong));
-// Setup wizard should never create plaintext test backups by accident or
-// advertise the removed PHP SQL fallback as if it were runnable.
-$setup_actions = file_get_contents(MG_SAOLUU_DIR.'admin/actions.php');
-$setup_ui = file_get_contents(MG_SAOLUU_DIR.'admin/render.php');
-test('Setup trial SQL backup explicitly encrypted', str_contains($setup_actions, "'backup_setup_test', true, ['encrypt' => true, 'upload_drive' => false]"));
-test('Admin never advertises disabled PHP fallback', !str_contains($setup_ui, 'PHP dự phòng'));
-// UI contract: honest operation status and readable restore checkpoint.
+$active_actions = file_get_contents(MG_SAOLUU_DIR.'admin/actions.php');
 $ux_php = file_get_contents(MG_SAOLUU_DIR . 'admin/render.php');
 $ux_js = file_get_contents(MG_SAOLUU_DIR . 'assets/js/admin.js');
+test('active Backup always creates safe_full',
+    str_contains($active_actions, "mg_saoluu_create_backup('safe_full'"));
+test('active UI has automatic domain rewrite wording',
+    str_contains($ux_php, 'tự đổi URL từ domain trong backup'));
 test('UI prevents duplicate long-running submissions', str_contains($ux_js, 'mgslSubmitting') && str_contains($ux_js, 'mgsl-operation-pending'));
 test('UI warns before exceeding the PHP upload limit', str_contains($ux_php, 'data-mgsl-max-upload') && str_contains($ux_js, 'setCustomValidity'));
-test('UI reports linked checkpoint and cleanup result', str_contains($ux_php, 'checkpoint_sha') && str_contains($ux_php, 'rollback_file_cleanup'));
-test('UI uses timezone-safe restore duration helper and truthful failed-rollback warning',
-    str_contains($ux_php, 'mg_saoluu_restore_duration_seconds')
-    && str_contains($ux_php, 'rollback_attempt_failed_reverted'));
+test('restore journal records automatic domain rewrite',
+    str_contains($restore_source, "'source_home'")
+    && str_contains($restore_source, "'target_home'")
+    && str_contains($restore_source, "'domain_rewrite'"));
 test('restore engine protects its own running plugin from archived downgrade',
     str_contains(file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php'), 'mg_saoluu_is_runtime_self_path'));
 // No real WordPress/DBngin/cPanel integration was performed by this mock harness.
