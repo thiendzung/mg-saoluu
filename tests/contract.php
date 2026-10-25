@@ -430,10 +430,10 @@ test('explicit rollback finalizer never reapplies current target settings',
     str_contains($restore_php, 'if (!$rollback_restore) {')
     && str_contains($restore_php, 'mg_saoluu_restore_target_settings($target_settings);'));
 test('non-security runtime caches use object cache instead of DB transients',
-    str_contains($core_php, "wp_cache_set($cache_key")
-    && !str_contains($core_php, "set_transient($cache_key")
-    && str_contains($lifecycle_cache_php, "wp_cache_set($cache_key")
-    && !str_contains($lifecycle_cache_php, "set_transient($cache_key"));
+    str_contains($core_php, 'wp_cache_set($cache_key')
+    && !str_contains($core_php, 'set_transient($cache_key')
+    && str_contains($lifecycle_cache_php, 'wp_cache_set($cache_key')
+    && !str_contains($lifecycle_cache_php, 'set_transient($cache_key'));
 test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
 test('debug file outside webroot',mg_saoluu_storage_path_safe(mg_saoluu_debug_file()));
 test('debug log excludes password',!str_contains(file_get_contents(mg_saoluu_debug_file()),'secret'));
