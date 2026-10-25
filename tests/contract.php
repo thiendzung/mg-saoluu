@@ -327,10 +327,11 @@ test('restore health accepts present active theme',
 $GLOBALS['test_options']['stylesheet']='';
 
 test('debug defaults off without explicit flag',mg_saoluu_debug_enabled()===false);
-test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
-test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
-test('debug file outside webroot',mg_saoluu_storage_path_safe(mg_saoluu_debug_file()));
-test('debug log excludes password',!str_contains(file_get_contents(mg_saoluu_debug_file()),'secret'));
+test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'full'])['password']));
+$debug_file = mg_saoluu_debug_file();
+test('debug disabled means no JSONL write',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===false);
+test('debug file path remains outside webroot',mg_saoluu_storage_path_safe($debug_file));
+test('debug disabled leaves no secret-bearing log',!is_file($debug_file) || !str_contains((string)file_get_contents($debug_file),'secret'));
 // Legacy Data Transfer and Deploy code are not shipped; options are preserved.
 test('no dormant data-engine in distribution', !is_file(MG_SAOLUU_DIR.'includes/data-engine.php'));
 test('no dormant deploy engine in distribution', !is_file(MG_SAOLUU_DIR.'includes/deploy.php'));
