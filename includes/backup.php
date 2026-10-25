@@ -1,6 +1,12 @@
 <?php
 if (!defined('ABSPATH')) { exit; }
 
+function mg_saoluu_zip_fast_compress_index($zip, $index) {
+    if (!is_object($zip) || !method_exists($zip, 'setCompressionIndex') || !defined('ZipArchive::CM_DEFLATE')) return;
+    // Level 1 favors backup speed while retaining broad ZIP compatibility.
+    @$zip->setCompressionIndex((int) $index, ZipArchive::CM_DEFLATE, 1);
+}
+
 function mg_saoluu_collect_backup_files($type) {
     $items = [];
     $total = 0;
@@ -110,6 +116,7 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
             $zip->close(); @unlink($sql_file); @unlink($zip_file);
             return new WP_Error('file_add_failed', 'Đã dừng vì không thể đưa file vào bản sao: ' . $item['relative']);
         }
+        mg_saoluu_zip_fast_compress_index($zip, $zip->numFiles - 1);
         $hashes[$item['relative']] = $hash;
         $added++;
     }
@@ -119,6 +126,7 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
         $zip->close(); @unlink($sql_file); @unlink($zip_file);
         return new WP_Error('sql_add_failed', 'Không thể đưa database vào file sao lưu.');
     }
+    mg_saoluu_zip_fast_compress_index($zip, $zip->numFiles - 1);
     $hashes['database_backup.sql'] = $sql_hash;
     $manifest = mg_saoluu_manifest($type);
     $manifest['file_count'] = $added;
@@ -131,6 +139,7 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
         $zip->close(); @unlink($sql_file); @unlink($zip_file);
         return new WP_Error('manifest_add_failed', 'Không thể ghi thông tin kiểm tra vào bản sao.');
     }
+    mg_saoluu_zip_fast_compress_index($zip, $zip->numFiles - 1);
     $zip->close();
     @unlink($sql_file);
     mg_saoluu_debug_log('backup_archive_ready',['type'=>$type,'file_count'=>$added]);
