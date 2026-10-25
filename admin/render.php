@@ -136,6 +136,7 @@ function mg_saoluu_render_page() {
     $checkpoint_name = '';
     $checkpoint_sha = '';
     $restore_seconds = null;
+    $pack_files = [];
 
     if (in_array($page_section, ['overview', 'restore', 'backups', 'schedule'], true)) {
         $backup_dir = mg_saoluu_get_backup_dir();
@@ -151,6 +152,12 @@ function mg_saoluu_render_page() {
     } elseif ($active === 'overview') {
         $metadata = mg_saoluu_read_metadata($backup_dir . 'metadata.json');
         foreach ($files as $file) $total_size += (int) @filesize($file);
+    } elseif ($active === 'restore') {
+        $metadata = mg_saoluu_read_metadata($backup_dir . 'metadata.json');
+        foreach ($files as $file) {
+            $name = basename($file);
+            if (($metadata[$name]['type'] ?? '') === 'pack') $pack_files[] = $file;
+        }
     }
     if (in_array($page_section, ['overview', 'system'], true)) $checks = mg_saoluu_system_checks();
     if ($page_section === 'system') {
