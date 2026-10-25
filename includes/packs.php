@@ -268,6 +268,10 @@ function mg_saoluu_pack_manifest_from_zip($zip_file) {
 
 function mg_saoluu_pack_prepare_zip($backup_file, $password) {
     if (!is_readable($backup_file) || !is_file($backup_file)) return new WP_Error('pack_missing', 'Không đọc được Pack backup.');
+    $password = (string) $password;
+    if ($password === '' && mg_saoluu_encryption_constant_available()) $password = (string) MG_SAOLUU_ENCRYPTION_KEY;
+    if ($password === '') $password = mg_saoluu_managed_encryption_key(false);
+    if ($password === '') return new WP_Error('recovery_key_missing', 'Không có Recovery Key để mở Pack v2.');
     $private = mg_saoluu_private_temp_dir();
     if (is_wp_error($private)) return $private;
     $payload = $private . 'mg-pack-payload-' . wp_generate_password(16, false, false) . '.bin';
@@ -287,6 +291,16 @@ function mg_saoluu_read_pack_manifest($backup_file, $password) {
     $prepared = mg_saoluu_pack_prepare_zip($backup_file, $password);
     if (is_wp_error($prepared)) return $prepared;
     @unlink($prepared['zip']);
+    return $prepared['manifest'];
+}
+
+function mg_saoluu_verify_pack_backup($backup_file, $password = '') {
+    $prepared = mg_saoluu_pack_prepare_zip($backup_file, $password);
+    if (is_wp_error($prepared)) return $prepared;
+    $sql = mg_saoluu_pack_extract_sql($prepared['zip'], $prepared['manifest']);
+    @unlink($prepared['zip']);
+    if (is_wp_error($sql)) return $sql;
+    @unlink($sql);
     return $prepared['manifest'];
 }
 
@@ -361,7 +375,7 @@ function mg_saoluu_create_pack_backup($pack, $note = '', $password = '', $apply_
     @unlink($payload_file);
     if (is_wp_error($encrypted)) return $encrypted;
 
-    $verified = mg_saoluu_read_pack_manifest($target, $password);
+    $verified = mg_saoluu_verify_pack_backup($target, $password);
     if (is_wp_error($verified)
         || ($verified['sql_sha256'] ?? '') !== $sql_sha
         || ($verified['pack'] ?? '') !== $pack) {
