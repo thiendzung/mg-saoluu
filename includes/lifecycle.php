@@ -110,7 +110,7 @@ function mg_saoluu_log_event($event, $message = '', $context = []) {
 
 /** Version-scoped cache prevents stale status after plugin upgrades. */
 function mg_saoluu_system_checks_cache_key() {
-    return 'mg_saoluu_system_checks_v_' . str_replace(['.', '-'], '_', MG_SAOLUU_VERSION);
+    return 'system_checks_' . str_replace(['.', '-'], '_', MG_SAOLUU_VERSION);
 }
 
 function mg_saoluu_system_checks($force = false) {
@@ -118,7 +118,7 @@ function mg_saoluu_system_checks($force = false) {
     $cache_key = mg_saoluu_system_checks_cache_key();
     if (!$force && is_array($runtime)) return $runtime;
     if (!$force) {
-        $cached = get_transient($cache_key);
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if (is_array($cached)) return $runtime = $cached;
     }
     $dir = mg_saoluu_get_backup_dir();
@@ -139,7 +139,7 @@ function mg_saoluu_system_checks($force = false) {
         'acf' => ['label' => 'ACF / dữ liệu tùy chỉnh', 'ok' => true, 'detail' => (function_exists('mg_saoluu_acf_available') && mg_saoluu_acf_available()) ? 'Đã nhận ACF' : 'ACF nằm ngoài phạm vi sao lưu lõi'],
         'multisite' => ['label' => 'WordPress Multisite', 'ok' => !is_multisite(), 'detail' => is_multisite() ? 'Chưa hỗ trợ Multisite' : 'Website đơn'],
     ];
-    set_transient($cache_key, $checks, 2 * MINUTE_IN_SECONDS);
+    wp_cache_set($cache_key, $checks, 'mg_saoluu', 2 * MINUTE_IN_SECONDS);
     return $runtime = $checks;
 }
 
