@@ -93,18 +93,26 @@ ui_check('client upload validation checks extension and size',
     && str_contains($js, 'allowed.some'));
 
 $verify_pos = strpos($actions, "if ($action === 'verify_restore_upload')");
+$backup_pos = strpos($actions, "if ($action === 'backup')", $verify_pos === false ? 0 : $verify_pos);
 $restore_pos = strpos($actions, "if ($action === 'restore_zip_upload')");
+$verify_block = ($verify_pos !== false && $backup_pos !== false && $backup_pos > $verify_pos)
+    ? substr($actions, $verify_pos, $backup_pos - $verify_pos)
+    : '';
 ui_check('Production-visible ZIP upload uses verify-only action before restore action',
     str_contains($render, 'name="mg_action" value="verify_restore_upload"')
     && str_contains($render, 'Production RC13 chỉ xác minh file')
     && $verify_pos !== false && $restore_pos !== false && $verify_pos < $restore_pos
-    && str_contains($actions, 'mg_saoluu_verify_uploaded_backup_for_current_site($staged, $password)')
-    && str_contains($actions, '@unlink($staged)'));
+    && str_contains($verify_block, 'mg_saoluu_verify_uploaded_backup_for_current_site($staged, $password)')
+    && str_contains($verify_block, '@unlink($staged)')
+    && !str_contains($verify_block, 'mg_saoluu_restore_zip(')
+    && !str_contains($verify_block, 'mg_saoluu_restore_raw_sql('));
 
+$restore_src = src($plugin, 'includes/restore.php');
 ui_check('uploaded backup verification is same-host fail-closed on Production',
-    str_contains($plugin ? src($plugin, 'includes/restore.php') : '', "mg_saoluu_environment() === 'production'")
-    && str_contains(src($plugin, 'includes/restore.php'), "'upload_verify_host'")
-    && str_contains(src($plugin, 'includes/restore.php'), "'upload_verify_prefix'")
-    && str_contains(src($plugin, 'includes/restore.php'), "'upload_verify_signature'"));
+    str_contains($restore_src, "mg_saoluu_environment() === 'production'")
+    && str_contains($restore_src, "'upload_verify_host'")
+    && str_contains($restore_src, "'upload_verify_environment'")
+    && str_contains($restore_src, "'upload_verify_prefix'")
+    && str_contains($restore_src, "'upload_verify_signature'"));
 
 echo "ADMIN UI TESTS $count/$count PASS\n";
