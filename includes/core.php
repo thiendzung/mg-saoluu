@@ -400,6 +400,13 @@ function mg_saoluu_defer_lock_release($token) {
     return true;
 }
 
+function mg_saoluu_cancel_deferred_lock($token) {
+    $deferred =& mg_saoluu_deferred_operation_locks();
+    if (!is_string($token) || !isset($deferred[$token])) return false;
+    unset($deferred[$token]);
+    return true;
+}
+
 function mg_saoluu_release_lock($token) {
     $handles =& mg_saoluu_operation_lock_handles();
     if (!is_string($token) || !isset($handles[$token])) return;
