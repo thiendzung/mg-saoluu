@@ -349,16 +349,27 @@ function mg_saoluu_capture_target_settings() {
     ];
     $values = [];
     foreach ($names as $name) $values[$name] = get_option($name, null);
-    return ['options' => $values, 'blog_public' => get_option('blog_public', 0), 'target_environment' => mg_saoluu_environment()];
+    global $wpdb;
+    $raw_blog_public = $wpdb->get_var(
+        $wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1", 'blog_public')
+    );
+    return [
+        'options' => $values,
+        'blog_public' => $raw_blog_public === null ? null : (string) $raw_blog_public,
+        'target_environment' => mg_saoluu_environment(),
+    ];
 }
 
 function mg_saoluu_restore_target_settings($settings) {
     foreach (($settings['options'] ?? []) as $name => $value) {
         if ($value === null) delete_option($name); else update_option($name, $value, false);
     }
-    if (($settings['target_environment'] ?? '') !== 'production') update_option('blog_public', 0);
-    else update_option('blog_public', $settings['blog_public'] ?? 1);
-    delete_transient('mg_saoluu_production_restore_unlocked');
+    $blog_public = $settings['blog_public'] ?? null;
+    if ($blog_public === null) delete_option('blog_public');
+    else update_option('blog_public', $blog_public);
+    // Do not delete any transient here. Exact rollback must be able to leave the
+    // checkpoint database untouched after import. Production unlock lifecycle is
+    // handled separately by the security flow, not by DB restoration.
 }
 
 function mg_saoluu_production_unlocked() {
@@ -1117,7 +1128,9 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
             }
         }
     } finally {
-        mg_saoluu_restore_target_settings($target_settings);
+        if (!$rollback_restore) {
+            mg_saoluu_restore_target_settings($target_settings);
+        }
         $maintenance_cleanup = mg_saoluu_maintenance(false);
         if (is_wp_error($maintenance_cleanup)) {
             $journal['maintenance_cleanup_error'] = $maintenance_cleanup->get_error_code();
