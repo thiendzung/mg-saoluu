@@ -62,9 +62,9 @@ function mg_saoluu_binary_candidates($type) {
 }
 
 function mg_saoluu_clear_runtime_cache() {
-    delete_transient('mg_saoluu_binary_mysql');
-    delete_transient('mg_saoluu_binary_mysqldump');
-    delete_transient('mg_saoluu_system_checks');
+    wp_cache_delete('binary_mysql', 'mg_saoluu');
+    wp_cache_delete('binary_mysqldump', 'mg_saoluu');
+    wp_cache_delete('system_checks_' . str_replace(['.', '-'], '_', MG_SAOLUU_VERSION), 'mg_saoluu');
     mg_saoluu_invalidate_backup_cache();
 }
 
@@ -76,9 +76,9 @@ function mg_saoluu_find_binary($type, $force = false) {
     if ($configured && mg_saoluu_path_is_executable($configured)) return $configured;
 
     if (!$force && array_key_exists($type, $runtime)) return $runtime[$type];
-    $cache_key = 'mg_saoluu_binary_' . $type;
+    $cache_key = 'binary_' . $type;
     if (!$force) {
-        $cached = get_transient($cache_key);
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if ($cached === '__missing__') return $runtime[$type] = '';
         if (is_string($cached) && $cached !== '' && mg_saoluu_path_is_executable($cached)) {
             return $runtime[$type] = $cached;
@@ -89,7 +89,7 @@ function mg_saoluu_find_binary($type, $force = false) {
     foreach (mg_saoluu_binary_candidates($type) as $candidate) {
         if (mg_saoluu_path_is_executable($candidate)) { $found = $candidate; break; }
     }
-    set_transient($cache_key, $found !== '' ? $found : '__missing__', 10 * MINUTE_IN_SECONDS);
+    wp_cache_set($cache_key, $found !== '' ? $found : '__missing__', 'mg_saoluu', 10 * MINUTE_IN_SECONDS);
     return $runtime[$type] = $found;
 }
 
@@ -260,20 +260,20 @@ function mg_saoluu_backup_cache_key() {
 }
 
 function mg_saoluu_invalidate_backup_cache() {
-    if (function_exists('mg_saoluu_get_backup_dir')) delete_transient(mg_saoluu_backup_cache_key());
+    if (function_exists('mg_saoluu_get_backup_dir')) wp_cache_delete(mg_saoluu_backup_cache_key(), 'mg_saoluu');
 }
 
 function mg_saoluu_list_backup_files($force = false) {
     $cache_key = mg_saoluu_backup_cache_key();
     if (!$force) {
-        $cached = get_transient($cache_key);
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if (is_array($cached)) return $cached;
     }
     $dir = mg_saoluu_get_backup_dir();
     $files = array_merge((array) glob($dir . 'backup_*.zip'), (array) glob($dir . 'backup_*.mgbackup'));
     $files = array_values(array_filter(array_unique($files), 'is_file'));
     usort($files, function($a, $b){ return filemtime($b) <=> filemtime($a); });
-    set_transient($cache_key, $files, 20);
+    wp_cache_set($cache_key, $files, 'mg_saoluu', 20);
     return $files;
 }
 
