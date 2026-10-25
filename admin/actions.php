@@ -5,7 +5,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     if (!current_user_can('manage_options')) wp_die('Bạn không có quyền thực hiện.');
     check_admin_referer('mg_saoluu_secure', 'mg_nonce');
     $action = sanitize_key(wp_unslash($_POST['mg_action']));
-    if (in_array($action,['backup','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
+    if (in_array($action,['backup','pack_backup','pack_restore','pack_restore_upload','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
 
     // v1.2.1 concentrates on BACKUP/RESTORE. Existing transfer and deploy
     // implementation/options remain on disk for a future migration, but no
@@ -288,9 +288,13 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         if (is_wp_error($result)) { $status = 'error'; $message = 'Không xác minh được: ' . $result->get_error_message(); }
         else {
             $status = 'success';
-            $message = $result['state'] === 'verified'
-                ? 'Đã đối chiếu SHA-256, nội dung ZIP và chữ ký của website hiện tại. CHƯA thử khôi phục.'
-                : 'Nội dung ZIP khớp nhưng không xác thực được chữ ký nguồn bằng khóa hiện tại. CHƯA thử khôi phục.';
+            if (!empty($result['authenticated_encryption'])) {
+                $message = 'Pack v2 PASS: SHA-256 file, XChaCha20-Poly1305, giải nén và checksum pack.sql đều khớp. CHƯA thử khôi phục.';
+            } else {
+                $message = $result['state'] === 'verified'
+                    ? 'Đã đối chiếu SHA-256, nội dung ZIP và chữ ký của website hiện tại. CHƯA thử khôi phục.'
+                    : 'Nội dung ZIP khớp nhưng không xác thực được chữ ký nguồn bằng khóa hiện tại. CHƯA thử khôi phục.';
+            }
             mg_saoluu_log_event('backup_verified', $message, ['file' => $name, 'state' => $result['state']]);
         }
         return;
@@ -298,7 +302,9 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     }
 
     if ($action === 'clear_log') {
-        delete_option('mg_saoluu_audit_log');
+        $private = mg_saoluu_private_state_delete('audit-log.json');
+        if (is_wp_error($private)) { $status='error'; $message=$private->get_error_message(); return; }
+        delete_option('mg_saoluu_audit_log'); // Legacy history only, explicit admin action.
         $status = 'success'; $message = 'Đã xóa nhật ký thao tác.'; return;
     }
 
@@ -372,6 +378,105 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     $lock = mg_saoluu_acquire_lock();
     if (is_wp_error($lock)) { $status = 'error'; $message = $lock->get_error_message(); return; }
     try {
+        if ($action === 'pack_backup') {
+            $pack = sanitize_key(wp_unslash($_POST['pack'] ?? 'settings'));
+            $note = sanitize_text_field(wp_unslash($_POST['backup_note'] ?? ''));
+            $password = (string) wp_unslash($_POST['backup_password'] ?? '');
+            $confirm = (string) wp_unslash($_POST['backup_password_confirm'] ?? '');
+            if ($password !== '' && $password !== $confirm) {
+                $status='error'; $message='Hai lần nhập mật khẩu không giống nhau.'; return;
+            }
+            $result = mg_saoluu_create_pack_backup($pack, $note, $password, true);
+            if (is_wp_error($result)) {
+                $status='error'; $message=$result->get_error_message();
+            } else {
+                mg_saoluu_log_event('pack_backup', 'Tạo Pack backup', ['file'=>$result,'pack'=>$pack]);
+                $status='success';
+                $message='Đã tạo Pack mã hóa: ' . $result . '.';
+            }
+            return;
+        }
+
+        if ($action === 'pack_restore_upload') {
+            if (mg_saoluu_environment() === 'production') {
+                $status='error'; $message='Bản RC khóa Pack Restore trên Production. Chỉ thử trên clone/staging.'; return;
+            }
+            if (!isset($_POST['pack_restore_confirm'])) {
+                $status='error'; $message='Hãy xác nhận phục hồi đúng Pack đã chọn.'; return;
+            }
+            $self = mg_saoluu_self_integrity();
+            if (empty($self['ok'])) {
+                $status='error'; $message='Đã khóa Pack Restore vì integrity plugin không đạt.'; return;
+            }
+
+            $uploaded = mg_saoluu_stage_pack_upload($_FILES['pack_file'] ?? null);
+            if (is_wp_error($uploaded)) {
+                $status='error'; $message=$uploaded->get_error_message(); return;
+            }
+
+            try {
+                $password = (string) wp_unslash($_POST['backup_password'] ?? '');
+                if ($password === '' && mg_saoluu_encryption_constant_available()) $password = (string) MG_SAOLUU_ENCRYPTION_KEY;
+                if ($password === '') $password = mg_saoluu_managed_encryption_key(false);
+                if ($password === '') {
+                    $status='error'; $message='Không có Recovery Key để mở Pack.'; return;
+                }
+
+                $result = mg_saoluu_restore_pack($uploaded, $password, $lock);
+                if (is_wp_error($result)) {
+                    $status='error'; $message=$result->get_error_message();
+                } else {
+                    mg_saoluu_log_event('pack_restore_upload_queued', 'Đã xếp Restore từ file local', [
+                        'pack'=>$result['pack'] ?? '',
+                        'job_id'=>$result['job_id'] ?? '',
+                    ]);
+                    $status='success';
+                    $message='File local đã được xác minh và xếp Restore worker. Job ' . ($result['job_id'] ?? '') . ' sẽ hậu kiểm trước khi báo hoàn tất.';
+                }
+            } finally {
+                if (is_string($uploaded) && is_file($uploaded) && !is_link($uploaded)) @unlink($uploaded);
+            }
+            return;
+        }
+
+        if ($action === 'pack_restore') {
+            if (!isset($_POST['pack_restore_confirm'])) {
+                $status='error'; $message='Hãy xác nhận phục hồi đúng Pack đã chọn.'; return;
+            }
+            $self = mg_saoluu_self_integrity();
+            if (empty($self['ok'])) {
+                $status='error'; $message='Đã khóa Pack Restore vì integrity plugin không đạt.'; return;
+            }
+            $name = basename(sanitize_file_name(wp_unslash($_POST['file_name'] ?? '')));
+            if (!mg_saoluu_is_backup_filename($name)) {
+                $status='error'; $message='Tên Pack không hợp lệ.'; return;
+            }
+            $metadata = mg_saoluu_read_metadata(mg_saoluu_get_backup_dir() . 'metadata.json');
+            if (($metadata[$name]['type'] ?? '') !== 'pack') {
+                $status='error'; $message='File đã chọn không phải Pack v2.'; return;
+            }
+            $path = mg_saoluu_get_backup_dir() . $name;
+            $password = (string) wp_unslash($_POST['backup_password'] ?? '');
+            if ($password === '' && mg_saoluu_encryption_constant_available()) $password = (string) MG_SAOLUU_ENCRYPTION_KEY;
+            if ($password === '') $password = mg_saoluu_managed_encryption_key(false);
+            if ($password === '') {
+                $status='error'; $message='Không có Recovery Key để mở Pack.'; return;
+            }
+            $result = mg_saoluu_restore_pack($path, $password, $lock);
+            if (is_wp_error($result)) {
+                $status='error'; $message=$result->get_error_message();
+            } else {
+                mg_saoluu_log_event('pack_restore_queued', 'Đã xếp Pack Restore worker', [
+                    'file'=>$name,
+                    'pack'=>$result['pack'] ?? '',
+                    'job_id'=>$result['job_id'] ?? '',
+                ]);
+                $status='success';
+                $message='Đã xác minh Pack và xếp Restore worker tối giản. Job ' . ($result['job_id'] ?? '') . ' sẽ chạy sau khi WordPress kết thúc request; mở lại tab Khôi phục để xem hậu kiểm.';
+            }
+            return;
+        }
+
         if ($action === 'backup') {
             $type = sanitize_key(wp_unslash($_POST['backup_type'] ?? 'sql'));
             $note = sanitize_text_field(wp_unslash($_POST['backup_note'] ?? ''));

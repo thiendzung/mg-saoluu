@@ -16,6 +16,7 @@ if (in_array('--unsafe-config', $argv ?? [], true)) define('MG_SAOLUU_BACKUP_DIR
 $_SERVER['DOCUMENT_ROOT'] = ABSPATH;
 $GLOBALS['test_options'] = [];
 $GLOBALS['test_transients'] = [];
+$GLOBALS['test_object_cache'] = [];
 $GLOBALS['test_count'] = 0;
 $GLOBALS['test_environment'] = 'local';
 $GLOBALS['test_restore_unlock'] = [];
@@ -38,6 +39,10 @@ function update_option($key,$value,$autoload=false) {$GLOBALS['test_options'][$k
 function get_transient($key) {return $GLOBALS['test_transients'][$key]??false;}
 function set_transient($key,$value,$ttl=0) {$GLOBALS['test_transients'][$key]=$value;return true;}
 function delete_transient($key){unset($GLOBALS['test_transients'][$key]);}
+function wp_cache_get($key,$group='default'){return $GLOBALS['test_object_cache'][$group][$key]??false;}
+function wp_cache_set($key,$value,$group='default',$expire=0){$GLOBALS['test_object_cache'][$group][$key]=$value;return true;}
+function wp_cache_delete($key,$group='default'){unset($GLOBALS['test_object_cache'][$group][$key]);return true;}
+function wp_cache_flush(){$GLOBALS['test_object_cache']=[];return true;}
 function wp_json_encode($v,$options=0){return json_encode($v,$options);}
 function size_format($bytes){return (string) $bytes;}
 function current_time($type='mysql'){return '2026-10-24 12:00:00';}
@@ -61,7 +66,7 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.2.1');
+define('MG_SAOLUU_VERSION', '1.3.0-rc12');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
@@ -78,6 +83,7 @@ require_once $base.'google-drive.php';
 require_once $base.'catalog.php';
 require_once $base.'backup.php';
 require_once $base.'restore.php';
+require_once $base.'packs.php';
 require_once $base.'integrity.php';
 
 // Explicit in-webroot configuration must FAIL CLOSED without writing there.
@@ -91,7 +97,9 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('stable version constant promoted', MG_SAOLUU_VERSION === '1.2.1');
+test('RC12 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc12');
+test('self-integrity cache does not create DB transient',
+    !array_filter(array_keys($GLOBALS['test_transients']), static fn($k)=>str_contains((string)$k,'self_integrity')));
 
 // Stable production restore still requires the signed temporary unlock plus the
 // explicit confirmation phrase. Version promotion must not bypass this gate.
@@ -578,11 +586,10 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// Stable release intentionally removes the RC-only hard block. Production restore
-// remains protected by signed unlock + password/host/phrase gates tested above
-// and by source host/signature checks in the restore engine.
-test('stable admin actions no longer advertise RC hard block',
-    !str_contains(MG_SAOLUU_VERSION, '-rc'));
+// RC12 deliberately keeps every Production Restore path hard-blocked while Pack
+// behavior is being accepted on an isolated clone/staging target.
+test('RC12 keeps production restore hard-block active',
+    str_contains(MG_SAOLUU_VERSION, '-rc'));
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 
 // WordPress-independent AES-GCM decryption: binary roundtrip + wrong-key block.

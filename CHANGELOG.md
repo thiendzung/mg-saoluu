@@ -1,3 +1,59 @@
+## 1.3.0-rc12 — Logical Settings state hash (2026-10-25)
+
+- Settings Pack state verification no longer depends on physical `wp_options.option_id` values.
+- Settings rows are dumped one per statement, normalized to remove only the surrogate ID, sorted by logical row content, then hashed identically during backup and worker post-verify.
+- Option name/value/autoload changes still change the hash; only physical IDs and row order are ignored.
+- Fresh RC12 Settings Packs are required; older Settings fingerprint versions fail closed.
+- RC11 oversized upload client gate is retained unchanged.
+
+## 1.3.0-rc11 — Settings hash + upload size gate (2026-10-25)
+
+- Settings Pack excludes volatile WordPress runtime rows (cron, rewrite rules and updater locks) from the deterministic backup/post-verify scope.
+- RC11 refuses older Settings Pack scope during Restore; create a fresh Settings Pack with RC11.
+- Oversized local Pack selection immediately disables submit and shows an inline warning; server-side upload validation remains unchanged.
+- No migration/deploy/production Restore changes.
+
+## 1.3.0-rc10 — Admin UI + local Pack restore (2026-10-25)
+
+- Keep the runtime-accepted RC9 Pack worker/state-hash/rollback core unchanged.
+- Store the actual WordPress admin hook suffix returned by `add_menu_page()`; enqueue CSS/JS only on that page and use asset `filemtime()` for cache busting.
+- Add minimal critical inline CSS fallback so the admin page remains readable if an external stylesheet is stale or unavailable.
+- Add primary Pack Restore from a local `.mgbackup` file: server-side upload limit, native PHP upload validation, private temp storage `0600`, Pack-v2 magic validation, then the same RC9 restore engine.
+- Uploaded Pack files are deleted after job staging and are not silently retained in the backup catalog.
+- Production Pack Restore remains hard-blocked for RC10.
+
+## 1.3.0-rc9 — Synchronous shutdown worker (2026-10-25)
+
+- Remove unreliable detached/background worker launching under PHP-FPM.
+- Pack Restore now registers the CLI worker from WordPress shutdown and runs it synchronously as a later PHP shutdown callback.
+- PHP-FPM may flush the queued response with `fastcgi_finish_request()`, while the same request process continues the isolated CLI restore worker.
+- Parent PHP process retains the existing Backup/Restore flock for the whole worker run; the worker no longer owns a second lock.
+- Worker launch failure is detected immediately by exit status, marks the private journal failed, and removes staged mysql.cnf/job/target SQL secrets.
+- Queued jobs older than five minutes are surfaced as stale launch failures instead of looking healthy forever.
+- RC9 keeps RC8 state-hash post-verify and automatic checkpoint rollback. Production Restore remains hard-blocked.
+
+## 1.3.0-rc9 — Minimal final DB writer (2026-10-25)
+
+- Fix RC7 false-success risk caused by third-party WordPress/plugin writes around Restore.
+- WordPress request now only verifies Pack, validates host/prefix/schema and stages private job material.
+- Standalone CLI worker never loads WordPress/plugins/themes/mu-plugins; it waits on the existing operation flock until the PHP request fully exits, then becomes the final DB writer.
+- Worker creates an exact private checkpoint of the selected scope, imports, re-dumps the same scope using deterministic mysqldump ordering, compares state hash, and automatically rolls back on any mismatch.
+- No option-name blacklist: ACF/RankMath/Woo options remain ordinary restored data.
+- DB cleanliness acceptance is scoped to MG Sao Luu-owned writes; unrelated plugins may legitimately create their own transients when wp-admin is opened.
+- RC9 keeps Production Restore hard-blocked.
+
+## 1.3.0-rc7 — Simple Pack Backup/Restore (2026-10-25)
+
+- Stop the migration/rollback patch train and rebuild the next release from v1.2.1 Stable.
+- Separate Backup/Restore from Migration. Pack Restore is same-host/same-prefix only and never rewrites domain.
+- Add three explicit DB Packs: Settings, WordPress Content and Full DB.
+- Settings Pack excludes transient rows; Content Pack keeps the complete core content-table dependency group in one native mysqldump snapshot.
+- Add Pack v2 streaming encryption with libsodium XChaCha20-Poly1305 secretstream and Argon2id key derivation.
+- Prefer Zstd level 1 around a store-only ZIP container; fall back to ordinary ZIP Deflate when zstd is unavailable.
+- Restore creates only a same-Pack checkpoint; failure re-applies that checkpoint rather than rolling back the whole website.
+- Move routine UI/integrity caches out of DB-backed Transients; new audit events live in private 0600 JSON outside webroot.
+- Production Pack Restore remains hard-blocked in RC7.
+
 ## 1.2.1 — Stable Backup & Restore (2026-10-24)
 
 - Promote the runtime-accepted RC9 Backup/Restore tree to Stable; no Data Transfer/Deploy features are re-enabled.
@@ -11,7 +67,7 @@
 - Runtime Restore/Rollback now skips the currently executing MG Sao Luu plugin directory during extraction, copy, new-file bookkeeping and cleanup, preventing an older backup from downgrading the active restore engine mid-transaction.
 - UI explicitly documents that the running restore engine is preserved and must be restored separately from a trusted release ZIP if needed.
 - Add regression coverage proving an archived RC7-style plugin payload cannot overwrite or delete an RC9 runtime plugin.
-- RC8 transactional rollback and timezone fixes are retained; production restore remains blocked for RC builds.
+- RC9 transactional rollback and timezone fixes are retained; production restore remains blocked for RC builds.
 
 ## 1.2.1-rc8 — Transactional rollback remediation (2026-10-24)
 

@@ -80,9 +80,17 @@ function mg_saoluu_production_constant_enabled() {
     return defined('MG_SAOLUU_ALLOW_PRODUCTION_RESTORE') && MG_SAOLUU_ALLOW_PRODUCTION_RESTORE === true;
 }
 
+function mg_saoluu_audit_log_read() {
+    $private = mg_saoluu_private_state_read('audit-log.json');
+    if (is_wp_error($private) || !is_array($private)) $private = [];
+    $legacy = get_option('mg_saoluu_audit_log', []);
+    if (!is_array($legacy)) $legacy = [];
+    return array_slice(array_merge($private, $legacy), 0, 100);
+}
+
 function mg_saoluu_log_event($event, $message = '', $context = []) {
-    $logs = get_option('mg_saoluu_audit_log', []);
-    if (!is_array($logs)) $logs = [];
+    $logs = mg_saoluu_private_state_read('audit-log.json');
+    if (is_wp_error($logs) || !is_array($logs)) $logs = [];
     $user = wp_get_current_user();
     array_unshift($logs, [
         'time' => current_time('mysql'),
@@ -94,14 +102,19 @@ function mg_saoluu_log_event($event, $message = '', $context = []) {
         'user' => $user && $user->exists() ? $user->user_login : 'system',
         'context' => is_array($context) ? array_map('sanitize_text_field', $context) : [],
     ]);
-    update_option('mg_saoluu_audit_log', array_slice($logs, 0, 100), false);
+    return !is_wp_error(mg_saoluu_private_state_write('audit-log.json', array_slice($logs, 0, 100)));
+}
+
+function mg_saoluu_system_checks_cache_key() {
+    return 'system_checks_' . str_replace(['.', '-'], '_', MG_SAOLUU_VERSION);
 }
 
 function mg_saoluu_system_checks($force = false) {
     static $runtime = null;
+    $cache_key = mg_saoluu_system_checks_cache_key();
     if (!$force && is_array($runtime)) return $runtime;
     if (!$force) {
-        $cached = get_transient('mg_saoluu_system_checks');
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if (is_array($cached)) return $runtime = $cached;
     }
     $dir = mg_saoluu_get_backup_dir();
@@ -122,7 +135,7 @@ function mg_saoluu_system_checks($force = false) {
         'acf' => ['label' => 'ACF / dữ liệu tùy chỉnh', 'ok' => true, 'detail' => (function_exists('mg_saoluu_acf_available') && mg_saoluu_acf_available()) ? 'Đã nhận ACF' : 'ACF nằm ngoài phạm vi sao lưu lõi'],
         'multisite' => ['label' => 'WordPress Multisite', 'ok' => !is_multisite(), 'detail' => is_multisite() ? 'Chưa hỗ trợ Multisite' : 'Website đơn'],
     ];
-    set_transient('mg_saoluu_system_checks', $checks, 2 * MINUTE_IN_SECONDS);
+    wp_cache_set($cache_key, $checks, 'mg_saoluu', 2 * MINUTE_IN_SECONDS);
     return $runtime = $checks;
 }
 
@@ -232,21 +245,52 @@ function mg_saoluu_reschedule_cron() {
 
 add_action('admin_menu', 'mg_saoluu_register_menu');
 function mg_saoluu_register_menu() {
-    add_menu_page('MG Sao Lưu', 'MG Sao Lưu', 'manage_options', 'mg-saoluu-tools', 'mg_saoluu_render_page', 'dashicons-backup', 99);
+    $GLOBALS['mg_saoluu_admin_hook_suffix'] = add_menu_page(
+        'MG Sao Lưu',
+        'MG Sao Lưu',
+        'manage_options',
+        'mg-saoluu-tools',
+        'mg_saoluu_render_page',
+        'dashicons-backup',
+        99
+    );
 }
 
-
 function mg_saoluu_is_admin_page($hook = '') {
-    if ($hook === 'toplevel_page_mg-saoluu-tools') return true;
+    $registered = (string) ($GLOBALS['mg_saoluu_admin_hook_suffix'] ?? '');
+    if ($registered !== '' && (string) $hook === $registered) return true;
     $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
     return $page === 'mg-saoluu-tools';
+}
+
+function mg_saoluu_asset_version($relative) {
+    $path = MG_SAOLUU_DIR . ltrim((string) $relative, '/');
+    $mtime = is_file($path) ? @filemtime($path) : false;
+    return $mtime ? (string) $mtime : MG_SAOLUU_VERSION;
 }
 
 add_action('admin_enqueue_scripts', 'mg_saoluu_admin_assets');
 function mg_saoluu_admin_assets($hook) {
     if (!mg_saoluu_is_admin_page($hook)) return;
 
-    // Let WordPress serve/cache admin assets; do not inline-read CSS/JS on each request.
-    wp_enqueue_style('mg-saoluu-admin', MG_SAOLUU_URL . 'assets/css/admin.css', [], MG_SAOLUU_VERSION);
-    wp_enqueue_script('mg-saoluu-admin', MG_SAOLUU_URL . 'assets/js/admin.js', [], MG_SAOLUU_VERSION, true);
+    $style = 'mg-saoluu-admin';
+    wp_enqueue_style(
+        $style,
+        MG_SAOLUU_URL . 'assets/css/admin.css',
+        [],
+        mg_saoluu_asset_version('assets/css/admin.css')
+    );
+    // Critical fallback keeps the page readable even if a proxy/browser serves
+    // a stale or missing external stylesheet. Full design still lives in admin.css.
+    wp_add_inline_style(
+        $style,
+        '.mgsl-wrap,.mgsl-setup-wrap{max-width:1280px}.mgsl-card,.mgsl-setup-card{background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;margin:0 0 18px}.mgsl-grid,.mgsl-grid-2{display:grid;gap:16px}.mgsl-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.mgsl-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:960px){.mgsl-grid,.mgsl-grid-2{grid-template-columns:1fr}}'
+    );
+    wp_enqueue_script(
+        'mg-saoluu-admin',
+        MG_SAOLUU_URL . 'assets/js/admin.js',
+        [],
+        mg_saoluu_asset_version('assets/js/admin.js'),
+        true
+    );
 }

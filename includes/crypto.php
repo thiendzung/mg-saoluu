@@ -200,6 +200,215 @@ function mg_saoluu_decrypt_backup_file($source, $target, $password) {
     return $header;
 }
 
+/**
+ * Pack v2 uses libsodium secretstream for large-file authenticated encryption.
+ * The legacy MGSLENC1 AES-GCM reader/writer remains for v1.2.1 compatibility.
+ */
+function mg_saoluu_pack_crypto_available() {
+    return function_exists('sodium_crypto_pwhash')
+        && function_exists('sodium_crypto_secretstream_xchacha20poly1305_init_push')
+        && function_exists('sodium_crypto_secretstream_xchacha20poly1305_push')
+        && function_exists('sodium_crypto_secretstream_xchacha20poly1305_init_pull')
+        && function_exists('sodium_crypto_secretstream_xchacha20poly1305_pull')
+        && defined('SODIUM_CRYPTO_PWHASH_ALG_ARGON2ID13');
+}
+
+function mg_saoluu_pack_magic() {
+    return 'MGSLPK2!';
+}
+
+function mg_saoluu_is_pack_backup($path) {
+    if (!is_readable($path) || !is_file($path)) return false;
+    $h = @fopen($path, 'rb');
+    if (!$h) return false;
+    $magic = fread($h, 8);
+    fclose($h);
+    return $magic === mg_saoluu_pack_magic();
+}
+
+function mg_saoluu_pack_derive_key($password, $salt, $opslimit, $memlimit) {
+    if (!mg_saoluu_pack_crypto_available()) return new WP_Error('pack_crypto_missing', 'Máy chủ cần PHP Sodium để dùng Pack v2.');
+    if (!is_string($salt) || strlen($salt) !== SODIUM_CRYPTO_PWHASH_SALTBYTES) return new WP_Error('pack_kdf_salt', 'Salt Pack v2 không hợp lệ.');
+    $password = (string) $password;
+    if (strlen($password) < 12) return new WP_Error('password_short', 'Recovery Key/mật khẩu cần ít nhất 12 ký tự.');
+    try {
+        return sodium_crypto_pwhash(
+            SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_KEYBYTES,
+            $password,
+            $salt,
+            (int) $opslimit,
+            (int) $memlimit,
+            SODIUM_CRYPTO_PWHASH_ALG_ARGON2ID13
+        );
+    } catch (Throwable $e) {
+        return new WP_Error('pack_kdf_failed', 'Không tạo được khóa Pack v2.');
+    }
+}
+
+function mg_saoluu_encrypt_pack_file($source, $target, $password, $meta = []) {
+    if (!mg_saoluu_pack_crypto_available()) return new WP_Error('pack_crypto_missing', 'Máy chủ cần PHP Sodium để tạo Pack v2.');
+    if (!is_readable($source) || !is_file($source) || filesize($source) < 1) return new WP_Error('pack_encrypt_source', 'Payload Pack v2 không đọc được.');
+    $salt = random_bytes(SODIUM_CRYPTO_PWHASH_SALTBYTES);
+    $opslimit = SODIUM_CRYPTO_PWHASH_OPSLIMIT_INTERACTIVE;
+    $memlimit = SODIUM_CRYPTO_PWHASH_MEMLIMIT_INTERACTIVE;
+    $key = mg_saoluu_pack_derive_key($password, $salt, $opslimit, $memlimit);
+    if (is_wp_error($key)) return $key;
+    try {
+        [$state, $stream_header] = sodium_crypto_secretstream_xchacha20poly1305_init_push($key);
+    } catch (Throwable $e) {
+        sodium_memzero($key);
+        return new WP_Error('pack_encrypt_init', 'Không khởi tạo được Pack v2.');
+    }
+    sodium_memzero($key);
+
+    $chunk_size = 1024 * 1024;
+    $header = [
+        'format' => 'mg-saoluu-pack-encrypted',
+        'version' => 2,
+        'cipher' => 'xchacha20poly1305-secretstream',
+        'kdf' => 'argon2id13',
+        'opslimit' => $opslimit,
+        'memlimit' => $memlimit,
+        'salt' => base64_encode($salt),
+        'stream_header' => base64_encode($stream_header),
+        'chunk_size' => $chunk_size,
+        'original_size' => (int) filesize($source),
+        'created_at' => gmdate('c'),
+        'meta' => is_array($meta) ? $meta : [],
+    ];
+    $header_json = wp_json_encode($header, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if (!is_string($header_json) || $header_json === '') {
+        sodium_memzero($state);
+        return new WP_Error('pack_encrypt_header', 'Không tạo được header Pack v2.');
+    }
+    $aad = hash('sha256', $header_json, true);
+    $in = @fopen($source, 'rb');
+    $out = @fopen($target, 'xb');
+    if (!$in || !$out) {
+        if ($in) fclose($in);
+        if ($out) fclose($out);
+        sodium_memzero($state);
+        return new WP_Error('pack_encrypt_open', 'Không mở được file Pack v2.');
+    }
+    @chmod($target, 0600);
+    $ok = mg_saoluu_write_all($out, mg_saoluu_pack_magic())
+        && mg_saoluu_write_all($out, pack('N', strlen($header_json)))
+        && mg_saoluu_write_all($out, $header_json);
+    $size = (int) filesize($source);
+    $read = 0;
+    try {
+        while ($ok && $read < $size) {
+            $plain = fread($in, min($chunk_size, $size - $read));
+            if ($plain === false || $plain === '') { $ok = false; break; }
+            $read += strlen($plain);
+            $tag = $read >= $size
+                ? SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_TAG_FINAL
+                : SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_TAG_MESSAGE;
+            $cipher = sodium_crypto_secretstream_xchacha20poly1305_push($state, $plain, $aad, $tag);
+            $ok = mg_saoluu_write_all($out, pack('N', strlen($cipher)))
+                && mg_saoluu_write_all($out, $cipher);
+        }
+    } catch (Throwable $e) {
+        $ok = false;
+    }
+    sodium_memzero($state);
+    fclose($in);
+    $flushed = @fflush($out);
+    $closed = @fclose($out);
+    if (!$ok || !$flushed || !$closed || $read !== $size) {
+        @unlink($target);
+        return new WP_Error('pack_encrypt_failed', 'Mã hóa Pack v2 thất bại; file dở đã bị xóa.');
+    }
+    return $header;
+}
+
+function mg_saoluu_decrypt_pack_file($source, $target, $password) {
+    if (!mg_saoluu_pack_crypto_available()) return new WP_Error('pack_crypto_missing', 'Máy chủ cần PHP Sodium để đọc Pack v2.');
+    if (!is_readable($source) || !is_file($source)) return new WP_Error('pack_decrypt_source', 'Pack v2 không đọc được.');
+    $in = @fopen($source, 'rb');
+    if (!$in) return new WP_Error('pack_decrypt_open', 'Không mở được Pack v2.');
+    if (fread($in, 8) !== mg_saoluu_pack_magic()) { fclose($in); return new WP_Error('pack_format', 'File không phải Pack v2.'); }
+    $len_raw = fread($in, 4);
+    if (strlen($len_raw) !== 4) { fclose($in); return new WP_Error('pack_header', 'Header Pack v2 bị cắt.'); }
+    $header_len = unpack('Nlen', $len_raw)['len'];
+    if ($header_len < 100 || $header_len > 131072) { fclose($in); return new WP_Error('pack_header', 'Header Pack v2 có kích thước bất thường.'); }
+    $header_json = fread($in, $header_len);
+    $header = json_decode((string) $header_json, true);
+    if (!is_array($header)
+        || ($header['format'] ?? '') !== 'mg-saoluu-pack-encrypted'
+        || (int) ($header['version'] ?? 0) !== 2
+        || ($header['cipher'] ?? '') !== 'xchacha20poly1305-secretstream'
+        || ($header['kdf'] ?? '') !== 'argon2id13') {
+        fclose($in);
+        return new WP_Error('pack_header', 'Header Pack v2 không hợp lệ.');
+    }
+    $salt = base64_decode((string) ($header['salt'] ?? ''), true);
+    $stream_header = base64_decode((string) ($header['stream_header'] ?? ''), true);
+    $opslimit = (int) ($header['opslimit'] ?? 0);
+    $memlimit = (int) ($header['memlimit'] ?? 0);
+    $chunk_size = (int) ($header['chunk_size'] ?? 0);
+    if (!is_string($salt) || strlen($salt) !== SODIUM_CRYPTO_PWHASH_SALTBYTES
+        || !is_string($stream_header) || strlen($stream_header) !== SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_HEADERBYTES
+        || $opslimit !== SODIUM_CRYPTO_PWHASH_OPSLIMIT_INTERACTIVE
+        || $memlimit !== SODIUM_CRYPTO_PWHASH_MEMLIMIT_INTERACTIVE
+        || $chunk_size !== 1024 * 1024) {
+        fclose($in);
+        return new WP_Error('pack_header', 'Thông số bảo mật Pack v2 không hợp lệ.');
+    }
+    $key = mg_saoluu_pack_derive_key($password, $salt, $opslimit, $memlimit);
+    if (is_wp_error($key)) { fclose($in); return $key; }
+    try {
+        $state = sodium_crypto_secretstream_xchacha20poly1305_init_pull($stream_header, $key);
+    } catch (Throwable $e) {
+        sodium_memzero($key); fclose($in);
+        return new WP_Error('pack_decrypt_init', 'Không khởi tạo được giải mã Pack v2.');
+    }
+    sodium_memzero($key);
+    $out = @fopen($target, 'xb');
+    if (!$out) { sodium_memzero($state); fclose($in); return new WP_Error('pack_decrypt_target', 'Không tạo được payload tạm Pack v2.'); }
+    @chmod($target, 0600);
+    $aad = hash('sha256', $header_json, true);
+    $written = 0; $final_seen = false; $error = '';
+    while (!feof($in)) {
+        $record_len_raw = fread($in, 4);
+        if ($record_len_raw === '') break;
+        if (strlen($record_len_raw) !== 4) { $error = 'Pack v2 bị cắt giữa record.'; break; }
+        $record_len = unpack('Nlen', $record_len_raw)['len'];
+        if ($record_len < 1 || $record_len > $chunk_size + SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_ABYTES + 64) {
+            $error = 'Pack v2 có record bất thường.'; break;
+        }
+        $cipher = '';
+        while (strlen($cipher) < $record_len && !feof($in)) {
+            $part = fread($in, $record_len - strlen($cipher));
+            if ($part === false) { $error = 'Không đọc được Pack v2.'; break 2; }
+            $cipher .= $part;
+        }
+        if (strlen($cipher) !== $record_len) { $error = 'Pack v2 thiếu dữ liệu.'; break; }
+        if ($final_seen) { $error = 'Pack v2 có dữ liệu sau FINAL tag.'; break; }
+        try {
+            $pulled = sodium_crypto_secretstream_xchacha20poly1305_pull($state, $cipher, $aad);
+        } catch (Throwable $e) {
+            $pulled = false;
+        }
+        if ($pulled === false) { $error = 'Sai Recovery Key hoặc Pack v2 đã bị thay đổi.'; break; }
+        [$plain, $tag] = $pulled;
+        if (!mg_saoluu_write_all($out, $plain)) { $error = 'Không ghi đủ payload Pack v2.'; break; }
+        $written += strlen($plain);
+        if ($tag === SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_TAG_FINAL) $final_seen = true;
+    }
+    sodium_memzero($state);
+    fclose($in);
+    $flushed = @fflush($out); $closed = @fclose($out);
+    $expected = (int) ($header['original_size'] ?? 0);
+    if (!$error && (!$final_seen || $expected < 1 || $written !== $expected)) $error = 'Pack v2 thiếu FINAL tag hoặc sai kích thước.';
+    if (!$error && (!$flushed || !$closed)) $error = 'Không hoàn tất được payload Pack v2.';
+    if ($error) {
+        @unlink($target);
+        return new WP_Error('pack_decrypt_failed', $error);
+    }
+    return $header;
+}
+
 function mg_saoluu_secret_key($legacy = false) {
     if ($legacy) return hash('sha256', wp_salt('secure_auth') . mg_saoluu_signing_key(), true);
     return hash('sha256', wp_salt('secure_auth') . wp_salt('logged_in') . 'mg-saoluu-credentials-v2', true);

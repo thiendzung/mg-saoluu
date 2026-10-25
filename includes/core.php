@@ -62,9 +62,9 @@ function mg_saoluu_binary_candidates($type) {
 }
 
 function mg_saoluu_clear_runtime_cache() {
-    delete_transient('mg_saoluu_binary_mysql');
-    delete_transient('mg_saoluu_binary_mysqldump');
-    delete_transient('mg_saoluu_system_checks');
+    wp_cache_delete('binary_mysql', 'mg_saoluu');
+    wp_cache_delete('binary_mysqldump', 'mg_saoluu');
+    wp_cache_delete('system_checks_' . str_replace(['.', '-'], '_', MG_SAOLUU_VERSION), 'mg_saoluu');
     mg_saoluu_invalidate_backup_cache();
 }
 
@@ -76,9 +76,9 @@ function mg_saoluu_find_binary($type, $force = false) {
     if ($configured && mg_saoluu_path_is_executable($configured)) return $configured;
 
     if (!$force && array_key_exists($type, $runtime)) return $runtime[$type];
-    $cache_key = 'mg_saoluu_binary_' . $type;
+    $cache_key = 'binary_' . $type;
     if (!$force) {
-        $cached = get_transient($cache_key);
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if ($cached === '__missing__') return $runtime[$type] = '';
         if (is_string($cached) && $cached !== '' && mg_saoluu_path_is_executable($cached)) {
             return $runtime[$type] = $cached;
@@ -89,7 +89,7 @@ function mg_saoluu_find_binary($type, $force = false) {
     foreach (mg_saoluu_binary_candidates($type) as $candidate) {
         if (mg_saoluu_path_is_executable($candidate)) { $found = $candidate; break; }
     }
-    set_transient($cache_key, $found !== '' ? $found : '__missing__', 10 * MINUTE_IN_SECONDS);
+    wp_cache_set($cache_key, $found !== '' ? $found : '__missing__', 'mg_saoluu', 10 * MINUTE_IN_SECONDS);
     return $runtime[$type] = $found;
 }
 
@@ -260,20 +260,20 @@ function mg_saoluu_backup_cache_key() {
 }
 
 function mg_saoluu_invalidate_backup_cache() {
-    if (function_exists('mg_saoluu_get_backup_dir')) delete_transient(mg_saoluu_backup_cache_key());
+    if (function_exists('mg_saoluu_get_backup_dir')) wp_cache_delete(mg_saoluu_backup_cache_key(), 'mg_saoluu');
 }
 
 function mg_saoluu_list_backup_files($force = false) {
     $cache_key = mg_saoluu_backup_cache_key();
     if (!$force) {
-        $cached = get_transient($cache_key);
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if (is_array($cached)) return $cached;
     }
     $dir = mg_saoluu_get_backup_dir();
     $files = array_merge((array) glob($dir . 'backup_*.zip'), (array) glob($dir . 'backup_*.mgbackup'));
     $files = array_values(array_filter(array_unique($files), 'is_file'));
     usort($files, function($a, $b){ return filemtime($b) <=> filemtime($a); });
-    set_transient($cache_key, $files, 20);
+    wp_cache_set($cache_key, $files, 'mg_saoluu', 20);
     return $files;
 }
 
@@ -308,6 +308,56 @@ function mg_saoluu_read_metadata($file) {
 }
 
 /**
+ * Small operational state outside WordPress DB. Routine backup UI activity
+ * must not alter wp_options.
+ */
+function mg_saoluu_private_state_path($name) {
+    if (!in_array((string) $name, ['audit-log.json'], true)) return new WP_Error('private_state_name', 'Tên private state không hợp lệ.');
+    $safe = mg_saoluu_storage_preflight();
+    if (is_wp_error($safe)) return $safe;
+    $path = trailingslashit(mg_saoluu_get_backup_dir()) . $name;
+    if (is_link($path) || (file_exists($path) && !is_file($path))) return new WP_Error('private_state_unsafe', 'Private state path không an toàn.');
+    return $path;
+}
+
+function mg_saoluu_private_state_read($name) {
+    $path = mg_saoluu_private_state_path($name);
+    if (is_wp_error($path)) return $path;
+    if (!file_exists($path)) return [];
+    return mg_saoluu_read_metadata($path);
+}
+
+function mg_saoluu_private_state_write($name, $data) {
+    $path = mg_saoluu_private_state_path($name);
+    if (is_wp_error($path)) return $path;
+    if (!is_array($data)) return new WP_Error('private_state_invalid', 'Private state phải là mảng.');
+    $json = wp_json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    if (!is_string($json)) return new WP_Error('private_state_json', 'Không mã hóa được private state.');
+    try { $suffix = bin2hex(random_bytes(8)); }
+    catch (Throwable $e) { return new WP_Error('private_state_temp', 'Không tạo được file tạm private state.'); }
+    $temp = dirname($path) . '/.mg-state-' . $suffix . '.tmp';
+    $handle = @fopen($temp, 'xb');
+    if (!$handle) return new WP_Error('private_state_temp', 'Không tạo được file tạm private state.');
+    @chmod($temp, 0600);
+    $ok = mg_saoluu_write_all($handle, $json) && @fflush($handle);
+    fclose($handle);
+    if (!$ok || !@rename($temp, $path)) {
+        @unlink($temp);
+        return new WP_Error('private_state_write', 'Không ghi được private state.');
+    }
+    @chmod($path, 0600);
+    return true;
+}
+
+function mg_saoluu_private_state_delete($name) {
+    $path = mg_saoluu_private_state_path($name);
+    if (is_wp_error($path)) return $path;
+    if (!file_exists($path)) return true;
+    if (!is_file($path) || is_link($path)) return new WP_Error('private_state_unsafe', 'Private state không thể xóa an toàn.');
+    return @unlink($path) ? true : new WP_Error('private_state_delete', 'Không xóa được private state.');
+}
+
+/**
  * Atomic, non-blocking operation lock across PHP-FPM/cron workers.
  * Uses a private filesystem lock rather than a transient get/set race.
  * The handle must remain open until release. No polling or sleep.
@@ -337,9 +387,37 @@ function mg_saoluu_acquire_lock() {
     return $token;
 }
 
+function &mg_saoluu_deferred_operation_locks() {
+    static $tokens = [];
+    return $tokens;
+}
+
+function mg_saoluu_defer_lock_release($token) {
+    $handles =& mg_saoluu_operation_lock_handles();
+    if (!is_string($token) || !isset($handles[$token])) return false;
+    $deferred =& mg_saoluu_deferred_operation_locks();
+    $deferred[$token] = true;
+    return true;
+}
+
+function mg_saoluu_cancel_deferred_lock($token) {
+    $deferred =& mg_saoluu_deferred_operation_locks();
+    if (!is_string($token) || !isset($deferred[$token])) return false;
+    unset($deferred[$token]);
+    return true;
+}
+
 function mg_saoluu_release_lock($token) {
     $handles =& mg_saoluu_operation_lock_handles();
     if (!is_string($token) || !isset($handles[$token])) return;
+    $deferred =& mg_saoluu_deferred_operation_locks();
+    if (!empty($deferred[$token])) {
+        unset($deferred[$token]);
+        // Keep the handle referenced until PHP exits. The detached Pack worker
+        // blocks on the same flock and becomes DB writer only after every
+        // WordPress/native shutdown callback has finished.
+        return;
+    }
     $handle = $handles[$token];
     unset($handles[$token]);
     @flock($handle, LOCK_UN);
