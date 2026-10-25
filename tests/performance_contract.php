@@ -29,8 +29,13 @@ perf_check('migration candidate lookup avoids archive scan/decrypt/hash',
     && !str_contains($body, 'mg_saoluu_read_backup_manifest')
     && !str_contains($body, 'hash_file('));
 
-perf_check('system-check cache is version scoped',
+perf_check('system-check cache is version scoped and DB-free',
     str_contains($lifecycle, 'mg_saoluu_system_checks_cache_key')
-    && str_contains($lifecycle, "set_transient(\$cache_key"));
+    && str_contains($lifecycle, "wp_cache_set(\$cache_key")
+    && !str_contains($lifecycle, "set_transient(\$cache_key"));
 
 echo "PERFORMANCE TESTS $count/$count PASS\n";
+
+perf_check('backup-list cache uses object cache instead of wp_options transient',
+    str_contains(file_get_contents($root . '/includes/core.php'), "wp_cache_set(\$cache_key")
+    && !str_contains(file_get_contents($root . '/includes/core.php'), "set_transient(\$cache_key"));
