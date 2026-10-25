@@ -4,7 +4,7 @@ Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
 Stable tag: 1.2.1
-Current pre-release: 1.3.0-rc8
+Current pre-release: 1.3.0-rc9
 License: GPLv2 or later
 
 MG Sao Luu v1.2.1: Backup, Verify, Store, Restore co kiem soat va rollback.
@@ -30,7 +30,7 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 
 == Changelog ==
 
-= 1.3.0-rc8 =
+= 1.3.0-rc9 =
 * Move Pack DB apply/post-verify/rollback into a standalone CLI worker that never bootstraps WordPress/plugins/themes/mu-plugins.
 * Handoff the existing flock until PHP process exit; worker starts only after all WordPress/native shutdown callbacks finish.
 * Pack v2 manifest adds deterministic scope state hash; post-restore mismatch automatically restores the exact pre-apply checkpoint.
