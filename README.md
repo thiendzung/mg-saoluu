@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.3.0-rc7 — Simple Pack Backup/Restore
+# MG Sao Lưu v1.3.0-rc8 — Simple Pack Backup/Restore
 
 WordPress Backup → Verify → Store → Restore. Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 
@@ -31,7 +31,7 @@ Complex PHP-serialized values containing unavailable plugin objects, enums, cycl
 Full backups may contain the MG Sao Luu plugin version that existed when the archive was created. During runtime Restore/Rollback, the plugin deliberately skips its own currently executing directory so an older archive cannot downgrade or replace the restore engine mid-transaction. The archived copy remains available for offline disaster recovery; restore of the plugin itself must be done separately from a trusted release ZIP/Recovery Runbook.
 
 
-## RC7: đơn giản hóa Backup/Restore
+## RC8: đơn giản hóa Backup/Restore
 
 Core mới tách Backup/Restore khỏi Migration. Restore Pack chỉ dùng **cùng host + cùng DB prefix**, không đổi domain.
 
@@ -42,4 +42,9 @@ Pack chính:
 
 Pipeline Pack v2: native mysqldump → ZIP container → Zstd level 1 nếu có → XChaCha20-Poly1305 secretstream. Pack luôn mã hóa. Trước restore, plugin tạo checkpoint **cùng loại Pack**; không dựng rollback transaction toàn website.
 
-Migration/domain rewrite không nằm trong Pack Restore và vẫn bị khóa trong RC7.
+Migration/domain rewrite không nằm trong Pack Restore và vẫn bị khóa trong RC8.
+
+
+## RC8: Restore worker tối giản
+
+Pack Restore không import DB trong request WordPress. Request chỉ verify/preflight/stage private job; worker PHP CLI độc lập chờ cùng `flock` đến khi WordPress process kết thúc, sau đó tạo checkpoint đúng scope, import, dump lại cùng scope bằng mysqldump deterministic và so `state_hash`. Mismatch hoặc import lỗi phải tự rollback checkpoint và không bao giờ trả success.
