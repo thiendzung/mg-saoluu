@@ -56,6 +56,11 @@ check_pack('content pack keeps complete WordPress content dependency group',
 check_pack('settings pack is only wp_options', mg_saoluu_pack_tables('settings')===['wp_options']);
 check_pack('unsafe SQL identifier rejected', mg_saoluu_pack_quote_identifier('wp_options;DROP')==='');
 
+$schema_a="CREATE TABLE `wp_posts` ( `ID` bigint NOT NULL AUTO_INCREMENT, PRIMARY KEY (`ID`) ) ENGINE=InnoDB AUTO_INCREMENT=123 DEFAULT CHARSET=utf8mb4";
+$schema_b="CREATE TABLE `wp_posts` (\n`ID` bigint NOT NULL AUTO_INCREMENT,\nPRIMARY KEY (`ID`)\n) ENGINE=InnoDB AUTO_INCREMENT=999 DEFAULT CHARSET=utf8mb4";
+check_pack('schema normalization ignores runtime AUTO_INCREMENT counter',
+    mg_saoluu_pack_normalize_schema_sql($schema_a)===mg_saoluu_pack_normalize_schema_sql($schema_b));
+
 if (!mg_saoluu_pack_crypto_available()) {
     fwrite(STDERR,"FAIL Pack v2 requires PHP Sodium in CI\n");
     exit(1);
