@@ -23,11 +23,11 @@ $js = src($plugin, 'assets/js/admin.js');
 $css = src($plugin, 'assets/css/admin.css');
 
 ui_check('admin menu stores the real WordPress hook suffix',
-    str_contains($lifecycle, "$GLOBALS['mg_saoluu_admin_hook_suffix'] = add_menu_page(")
-    && str_contains($lifecycle, "$hook === $registered"));
+    str_contains($lifecycle, '$GLOBALS[\'mg_saoluu_admin_hook_suffix\'] = add_menu_page(')
+    && str_contains($lifecycle, '$hook === $registered'));
 
 ui_check('admin assets use filemtime cache busting with critical CSS fallback',
-    str_contains($lifecycle, "filemtime($path)")
+    str_contains($lifecycle, 'filemtime($path)')
     && str_contains($lifecycle, "wp_add_inline_style(")
     && str_contains($lifecycle, "assets/css/admin.css")
     && str_contains($lifecycle, "assets/js/admin.js"));
@@ -50,8 +50,8 @@ ui_check('local Pack upload is bounded by WordPress/PHP upload limit',
 ui_check('local Pack upload is accepted only through native PHP upload semantics',
     str_contains($packs, 'is_uploaded_file($tmp)')
     && str_contains($packs, 'move_uploaded_file($tmp, $target)')
-    && str_contains($packs, "mg_saoluu_private_temp_dir()")
-    && str_contains($packs, "@chmod($target, 0600)")
+    && str_contains($packs, 'mg_saoluu_private_temp_dir()')
+    && str_contains($packs, '@chmod($target, 0600)')
     && str_contains($packs, 'mg_saoluu_is_pack_backup($target)')
     && !str_contains($packs, 'wp_handle_upload('));
 
@@ -62,8 +62,8 @@ ui_check('RC10 blocks Production before staging local upload',
 
 ui_check('uploaded Pack is deleted after staging restore job',
     str_contains($actions, "finally {")
-    && str_contains($actions, "@unlink($uploaded)")
-    && str_contains($actions, "mg_saoluu_restore_pack($uploaded, $password, $lock)"));
+    && str_contains($actions, '@unlink($uploaded)')
+    && str_contains($actions, 'mg_saoluu_restore_pack($uploaded, $password, $lock)'));
 
 ui_check('local upload has real browser size validation and operation feedback',
     str_contains($js, "pack_restore_upload:")
