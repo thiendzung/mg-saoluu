@@ -1,3 +1,12 @@
+## 1.3.0-rc10 — Admin UI + local Pack restore (2026-10-25)
+
+- Keep the runtime-accepted RC9 Pack worker/state-hash/rollback core unchanged.
+- Store the actual WordPress admin hook suffix returned by `add_menu_page()`; enqueue CSS/JS only on that page and use asset `filemtime()` for cache busting.
+- Add minimal critical inline CSS fallback so the admin page remains readable if an external stylesheet is stale or unavailable.
+- Add primary Pack Restore from a local `.mgbackup` file: server-side upload limit, native PHP upload validation, private temp storage `0600`, Pack-v2 magic validation, then the same RC9 restore engine.
+- Uploaded Pack files are deleted after job staging and are not silently retained in the backup catalog.
+- Production Pack Restore remains hard-blocked for RC10.
+
 ## 1.3.0-rc9 — Synchronous shutdown worker (2026-10-25)
 
 - Remove unreliable detached/background worker launching under PHP-FPM.
