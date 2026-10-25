@@ -34,8 +34,8 @@ perf_check('system-check cache is version scoped and DB-free',
     && str_contains($lifecycle, "wp_cache_set(\$cache_key")
     && !str_contains($lifecycle, "set_transient(\$cache_key"));
 
-echo "PERFORMANCE TESTS $count/$count PASS\n";
-
 perf_check('backup-list cache uses object cache instead of wp_options transient',
     str_contains(file_get_contents($root . '/includes/core.php'), "wp_cache_set(\$cache_key")
     && !str_contains(file_get_contents($root . '/includes/core.php'), "set_transient(\$cache_key"));
+
+echo "PERFORMANCE TESTS $count/$count PASS\n";
