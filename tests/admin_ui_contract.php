@@ -144,6 +144,11 @@ ui_check('stable Production Full Site upload requires temporary unlock and sensi
     && str_contains($actions, "mg_saoluu_security_sensitive_confirmation(")
     && str_contains($actions, "mg_saoluu_check_restore_confirmation("));
 
+ui_check('Production Full Site upload cannot silently fall back to database-only mode',
+    str_contains($render, 'Phạm vi Restore')
+    && str_contains($render, 'Database + files (Full Site)')
+    && str_contains($render, 'type="hidden" name="restore_mode" value="files_database"'));
+
 ui_check('Production restore forces URL rewrite off server-side',
     substr_count($actions, "mg_saoluu_environment() === 'production' ? false : isset(\$_POST['change_url'])") >= 2
     && str_contains($render, 'bị khóa trên web thật'));
