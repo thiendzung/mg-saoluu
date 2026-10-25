@@ -51,8 +51,16 @@ function mg_saoluu_pack_tables($pack) {
     return new WP_Error('pack_invalid', 'Pack backup không hợp lệ.');
 }
 
+function mg_saoluu_pack_settings_scope() {
+    return 'exclude_transients_runtime_v2';
+}
+
 function mg_saoluu_pack_settings_predicate() {
-    return "LEFT(option_name,11) <> '_transient_' AND LEFT(option_name,16) <> '_site_transient_'";
+    // Settings Pack contains durable configuration, not runtime scheduler/cache
+    // state that may legitimately change between import and post-verify.
+    return "LEFT(option_name,11) <> '_transient_'"
+        . " AND LEFT(option_name,16) <> '_site_transient_'"
+        . " AND option_name NOT IN ('cron','rewrite_rules','auto_updater.lock','core_updater.lock')";
 }
 
 function mg_saoluu_pack_quote_identifier($name) {
@@ -454,11 +462,13 @@ function mg_saoluu_create_pack_backup($pack, $note = '', $password = '', $apply_
         'db_table_prefix' => $GLOBALS['wpdb']->prefix,
         'tables' => array_values((array) $tables),
         'schema_fingerprint' => $schema,
-        'settings_scope' => $pack === 'settings' ? 'exclude_transients' : '',
+        'settings_scope' => $pack === 'settings' ? mg_saoluu_pack_settings_scope() : '',
         'sql_sha256' => $sql_sha,
         'sql_size' => (int) filesize($sql_file),
         'state_hash' => $state_hash,
-        'state_hash_algorithm' => 'sha256-mysqldump-order-by-primary-v1',
+        'state_hash_algorithm' => $pack === 'settings'
+            ? 'sha256-mysqldump-order-by-primary-settings-stable-v2'
+            : 'sha256-mysqldump-order-by-primary-v1',
         'note' => sanitize_text_field($note),
         'created_at' => gmdate('c'),
     ];
@@ -661,7 +671,7 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
         return new WP_Error('pack_cli_missing', 'Pack Restore cần mysql và mysqldump/mariadb-dump CLI.');
     }
     if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-        return new WP_Error('rc_production_restore_disabled', 'RC10 chỉ test Pack Restore trên clone/staging.');
+        return new WP_Error('rc_production_restore_disabled', 'RC11 chỉ test Pack Restore trên clone/staging.');
     }
 
     $prepared = mg_saoluu_pack_prepare_zip($backup_file, $password);
@@ -683,6 +693,14 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
         @unlink($prepared['zip']);
         return new WP_Error('pack_prefix_mismatch', 'DB prefix của Pack không khớp site hiện tại.');
     }
+    if ($pack === 'settings' && (string) ($manifest['settings_scope'] ?? '') !== mg_saoluu_pack_settings_scope()) {
+        @unlink($prepared['zip']);
+        return new WP_Error(
+            'pack_settings_scope_mismatch',
+            'Pack Settings dùng scope runtime cũ. Hãy tạo Pack Settings mới bằng RC11 trước khi Restore.'
+        );
+    }
+
     if ($pack !== 'full_db') {
         $tables = mg_saoluu_pack_tables($pack);
         $schema = mg_saoluu_pack_schema_fingerprint($tables);
