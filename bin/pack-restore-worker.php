@@ -145,7 +145,7 @@ if (!mgw_safe_file($job_file)) mgw_fail('Unsafe job file.', 3);
 $job = mgw_read_json($job_file);
 if (!$job || (int)($job['version'] ?? 0) !== 1) mgw_fail('Invalid job.', 4);
 
-$required = ['job_id','journal','work_dir','pack','database','mysql_binary','mysqldump_binary','mysql_config','target_sql','expected_state_hash','dump_options','tables','cleanup_sql'];
+$required = ['job_id','journal','work_dir','global_lock','pack','database','mysql_binary','mysqldump_binary','mysql_config','target_sql','expected_state_hash','dump_options','tables','cleanup_sql'];
 foreach ($required as $key) if (!array_key_exists($key, $job)) mgw_fail('Missing job field.', 5);
 
 $work = realpath((string)$job['work_dir']);
@@ -153,9 +153,10 @@ if (!$work || !is_dir($work) || is_link($work)) mgw_fail('Unsafe work dir.', 6);
 $journal = (string)$job['journal'];
 if (dirname($journal) !== $work || dirname((string)$job['target_sql']) !== $work || dirname((string)$job['mysql_config']) !== $work) mgw_fail('Job paths escape work dir.', 7);
 
-$lock_path = $work . '/worker.lock';
+$lock_path = (string)$job['global_lock'];
+if (is_link($lock_path) || dirname($lock_path) === $work) mgw_fail('Unsafe global lock.', 8);
 $lock = @fopen($lock_path, 'c+');
-if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) mgw_fail('Worker already running.', 8);
+if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) mgw_fail('Another Backup/Restore operation is running.', 8);
 @chmod($lock_path, 0600);
 
 $started = microtime(true);
