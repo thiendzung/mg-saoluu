@@ -1,3 +1,10 @@
+## 1.3.0-rc11 — Settings hash + upload size gate (2026-10-25)
+
+- Settings Pack excludes volatile WordPress runtime rows (cron, rewrite rules and updater locks) from the deterministic backup/post-verify scope.
+- RC11 refuses older Settings Pack scope during Restore; create a fresh Settings Pack with RC11.
+- Oversized local Pack selection immediately disables submit and shows an inline warning; server-side upload validation remains unchanged.
+- No migration/deploy/production Restore changes.
+
 ## 1.3.0-rc10 — Admin UI + local Pack restore (2026-10-25)
 
 - Keep the runtime-accepted RC9 Pack worker/state-hash/rollback core unchanged.
