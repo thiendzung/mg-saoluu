@@ -1,5 +1,5 @@
 <?php
-/** Static admin UI/upload contracts; no WordPress bootstrap. */
+/** v1.3.1 simple Backup/Restore static contracts; no WordPress bootstrap. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 
 $plugin = rtrim((string)(getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/');
@@ -15,145 +15,88 @@ function src($plugin, $path) {
     return $data;
 }
 
+$main = src($plugin, 'mg-saoluu.php');
 $lifecycle = src($plugin, 'includes/lifecycle.php');
-$packs = src($plugin, 'includes/packs.php');
+$backup = src($plugin, 'includes/backup.php');
+$restore = src($plugin, 'includes/restore.php');
 $actions = src($plugin, 'admin/actions.php');
 $render = src($plugin, 'admin/render.php');
 $js = src($plugin, 'assets/js/admin.js');
 $css = src($plugin, 'assets/css/admin.css');
 
-ui_check('admin menu stores the real WordPress hook suffix',
-    str_contains($lifecycle, '$GLOBALS[\'mg_saoluu_admin_hook_suffix\'] = add_menu_page(')
-    && str_contains($lifecycle, '$hook === $registered'));
+ui_check('v1.3.1 version is explicit',
+    str_contains($main, "Version: 1.3.1")
+    && str_contains($main, "define('MG_SAOLUU_VERSION', '1.3.1')"));
 
-ui_check('admin assets use filemtime cache busting with critical CSS fallback',
-    str_contains($lifecycle, 'filemtime($path)')
-    && str_contains($lifecycle, "wp_add_inline_style(")
-    && str_contains($lifecycle, "assets/css/admin.css")
-    && str_contains($lifecycle, "assets/js/admin.js"));
+ui_check('new install skips environment/security wizard',
+    str_contains($lifecycle, "add_option('mg_saoluu_setup_complete', '1'")
+    && !str_contains($lifecycle, "set_transient('mg_saoluu_activation_redirect', 1, 60)"));
 
-ui_check('admin CSS and JS are non-empty packaged assets',
-    strlen($css) > 5000 && strlen($js) > 3000);
+ui_check('active UI has exactly the simple three-tab product surface',
+    str_contains($render, "['backup' => 'Sao lưu', 'restore' => 'Khôi phục', 'backups' => 'Bản đã lưu']")
+    && str_contains($render, 'mg_saoluu_render_simple_page();')
+    && str_contains($render, 'Full Backup → Full Restore'));
 
-ui_check('restore UI offers saved Pack and local upload sources',
-    str_contains($render, 'Bản đã lưu')
-    && str_contains($render, 'Upload từ máy')
-    && str_contains($render, 'name="mg_action" value="pack_restore_upload"')
-    && str_contains($render, 'enctype="multipart/form-data"')
-    && str_contains($render, 'data-mgsl-max-upload'));
+ui_check('simple backup action always creates safe_full without Pack mode',
+    str_contains($actions, "mg_saoluu_create_backup('safe_full'")
+    && str_contains($actions, "'encrypt' => false")
+    && str_contains($actions, "'upload_drive' => false"));
 
-ui_check('local Pack upload is bounded by WordPress/PHP upload limit',
-    str_contains($packs, 'function mg_saoluu_pack_upload_limit()')
-    && str_contains($packs, 'wp_max_upload_size()')
-    && str_contains($packs, '2 * 1024 * 1024 * 1024'));
+ui_check('legacy Pack signer SQL restore actions are backend-blocked',
+    str_contains($actions, "'pack_backup','pack_restore','pack_restore_upload','verify_restore_upload','restore_sql_upload'")
+    && str_contains($actions, "'security_restore_challenge','security_sign_restore_challenge','security_apply_restore_approval'"));
 
-ui_check('local Pack upload is accepted only through native PHP upload semantics',
-    str_contains($packs, 'is_uploaded_file($tmp)')
-    && str_contains($packs, 'move_uploaded_file($tmp, $target)')
-    && str_contains($packs, 'mg_saoluu_private_temp_dir()')
-    && str_contains($packs, '@chmod($target, 0600)')
-    && str_contains($packs, 'mg_saoluu_is_pack_backup($target)')
-    && !str_contains($packs, 'wp_handle_upload('));
+ui_check('restore action requires only explicit checkbox plus plugin integrity',
+    str_contains($actions, "if (!isset(\$_POST['restore_confirm']))")
+    && str_contains($actions, 'mg_saoluu_self_integrity()')
+    && !str_contains(substr($actions, strpos($actions, "if (in_array(\$action, ['restore_saved'"), 1200), 'mg_saoluu_security_sensitive_confirmation'));
 
-$prod = strpos($actions, "if (mg_saoluu_environment() === 'production')");
-$stage = strpos($actions, 'mg_saoluu_stage_pack_upload(');
-ui_check('RC build blocks Production before staging local upload',
-    $prod !== false && $stage !== false && $prod < $stage);
+ui_check('saved and uploaded restore force full files plus automatic rewrite',
+    substr_count($actions, 'mg_saoluu_restore_zip($path, true, true, $password)') >= 1
+    && substr_count($actions, 'mg_saoluu_restore_zip($staged, true, true, $password)') >= 1);
 
-ui_check('uploaded Pack is deleted after staging restore job',
-    str_contains($actions, "finally {")
-    && str_contains($actions, '@unlink($uploaded)')
-    && str_contains($actions, 'mg_saoluu_restore_pack($uploaded, $password, $lock)'));
+ui_check('restore engine ignores environment mode and always restores Full Site',
+    str_contains($restore, '$restore_files = true;')
+    && str_contains($restore, '$change_url = true;')
+    && !str_contains(substr($restore, strpos($restore, 'function mg_saoluu_restore_zip'), 5000), "'cross_env_production'"));
 
-ui_check('local upload has real browser size validation and operation feedback',
-    str_contains($js, "pack_restore_upload:")
-    && str_contains($js, 'data-mgsl-max-upload')
-    && str_contains($js, 'picked.size > limit')
-    && str_contains($js, 'mgslUploadDisabled')
-    && str_contains($js, 'submit.disabled = true')
-    && str_contains($render, 'data-mgsl-upload-warning'));
+ui_check('restore automatically rewrites source URLs to current target URLs',
+    str_contains($restore, "mg_saoluu_search_replace_database(\$source_home, \$target_home)")
+    && str_contains($restore, "mg_saoluu_search_replace_database(\$source_site, \$target_site)")
+    && str_contains($restore, "'domain_rewrite'")
+    && str_contains($restore, "update_option('home', untrailingslashit(\$target_home))")
+    && str_contains($restore, "update_option('siteurl', untrailingslashit(\$target_site))"));
 
-ui_check('responsive CSS styles the two restore sources and upload box',
-    str_contains($css, '.mgsl-restore-source-grid')
-    && str_contains($css, '.mgsl-upload-box')
-    && str_contains($css, '@media(max-width:900px)'));
+ui_check('DB prefix mismatch still fails closed',
+    str_contains($restore, "'backup_prefix_unknown'")
+    && str_contains($restore, "'backup_prefix_mismatch'"));
 
-ui_check('restore upload boxes implement delegated drag and drop',
-    substr_count($render, 'data-mgsl-dropzone') >= 3
-    && str_contains($js, "document.addEventListener('dragover'")
+ui_check('checkpoint rollback and exact snapshot prune remain active',
+    str_contains($restore, "mg_saoluu_create_backup(")
+    && str_contains($restore, "'purpose' => 'rollback'")
+    && str_contains($restore, "'snapshot_prune'")
+    && str_contains($restore, "'snapshot_remaining_count'"));
+
+ui_check('runtime backup uses fast Deflate level 1',
+    str_contains($backup, 'function mg_saoluu_zip_fast_compress_index')
+    && str_contains($backup, 'ZipArchive::CM_DEFLATE, 1')
+    && substr_count($backup, 'mg_saoluu_zip_fast_compress_index(') >= 4);
+
+ui_check('upload UI keeps drag-drop and bounded size validation',
+    str_contains($render, 'data-mgsl-dropzone')
+    && str_contains($render, 'data-mgsl-extensions=".zip,.mgbackup"')
     && str_contains($js, "document.addEventListener('drop'")
-    && str_contains($js, 'new DataTransfer()')
-    && str_contains($js, 'field.dispatchEvent(new Event(\'change\''));
+    && str_contains($js, 'picked.size > limit'));
 
-ui_check('client upload validation checks extension and size',
-    str_contains($render, 'data-mgsl-extensions=".mgbackup"')
-    && substr_count($render, 'data-mgsl-extensions=".zip,.mgbackup"') >= 2
-    && str_contains($js, 'picked.size > limit')
-    && str_contains($js, 'wrongType')
-    && str_contains($js, 'allowed.some'));
+ui_check('pack and signer concepts are absent from active simple UI function',
+    ($start = strpos($render, 'function mg_saoluu_render_simple_page')) !== false
+    && ($end = strpos($render, 'function mg_saoluu_render_page', $start)) !== false
+    && !str_contains(substr($render, $start, $end - $start), 'Pack Restore')
+    && !str_contains(substr($render, $start, $end - $start), 'Local')
+    && !str_contains(substr($render, $start, $end - $start), 'Production')
+    && !str_contains(substr($render, $start, $end - $start), 'MGAPPROVE1'));
 
-$verify_pos = strpos($actions, "if (\$action === 'verify_restore_upload')");
-$backup_pos = strpos($actions, "if (\$action === 'backup')", $verify_pos === false ? 0 : $verify_pos);
-$restore_pos = strpos($actions, "if (\$action === 'restore_zip_upload')");
-$verify_block = ($verify_pos !== false && $backup_pos !== false && $backup_pos > $verify_pos)
-    ? substr($actions, $verify_pos, $backup_pos - $verify_pos)
-    : '';
-ui_check('Production-visible verify-only upload remains non-destructive',
-    str_contains($render, 'name="mg_action" value="verify_restore_upload"')
-    && str_contains($render, 'Bước 1 · Xác minh file trước.')
-    && $verify_pos !== false && $restore_pos !== false && $verify_pos < $restore_pos
-    && str_contains($verify_block, 'mg_saoluu_verify_uploaded_backup_for_current_site($staged, $password)')
-    && str_contains($verify_block, '@unlink($staged)')
-    && !str_contains($verify_block, 'mg_saoluu_restore_zip(')
-    && !str_contains($verify_block, 'mg_saoluu_restore_raw_sql('));
-
-$restore_src = src($plugin, 'includes/restore.php');
-ui_check('uploaded backup verification is same-host fail-closed on Production',
-    str_contains($restore_src, "mg_saoluu_environment() === 'production'")
-    && str_contains($restore_src, "'upload_verify_host'")
-    && str_contains($restore_src, "'upload_verify_environment'")
-    && str_contains($restore_src, "'upload_verify_prefix'")
-    && str_contains($restore_src, "'upload_verify_signature'"));
-
-$security = src($plugin, 'includes/security.php');
-$main = src($plugin, 'mg-saoluu.php');
-
-ui_check('stable production restore requires explicit capability beyond version text',
-    str_contains($main, "define('MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE', true)")
-    && str_contains($lifecycle, 'function mg_saoluu_production_full_restore_enabled()')
-    && str_contains($lifecycle, "strpos(MG_SAOLUU_VERSION, '-rc') === false")
-    && str_contains($actions, '!mg_saoluu_production_full_restore_enabled()')
-    && str_contains($restore_src, '!mg_saoluu_production_full_restore_enabled()'));
-
-ui_check('security challenge sign apply and unlock info are capability-gated',
-    substr_count($security, '!mg_saoluu_production_full_restore_enabled()') >= 4
-    && str_contains($security, "'production_restore_disabled'"));
-
-ui_check('production Pack Restore is hard-blocked at action UI and engine',
-    substr_count($actions, "Pack Restore vẫn bị khóa trên Production") >= 2
-    && str_contains($packs, "if (mg_saoluu_environment() === 'production')")
-    && str_contains($packs, "'production_pack_restore_disabled'")
-    && str_contains($render, 'Pack Restore bị khóa trên Production kể cả Stable 1.3.0'));
-
-ui_check('stable Production Full Site upload requires temporary unlock and sensitive confirmation',
-    str_contains($render, 'Upload & Restore Production')
-    && str_contains($render, 'name="admin_password"')
-    && str_contains($render, 'name="restore_host"')
-    && str_contains($render, 'name="restore_phrase"')
-    && str_contains($render, '!$production_unlocked')
-    && str_contains($actions, "mg_saoluu_security_sensitive_confirmation(")
-    && str_contains($actions, "mg_saoluu_check_restore_confirmation("));
-
-ui_check('Production Full Site upload cannot silently fall back to database-only mode',
-    str_contains($render, 'Phạm vi Restore')
-    && str_contains($render, 'Database + files (Full Site)')
-    && str_contains($render, 'type="hidden" name="restore_mode" value="files_database"'));
-
-ui_check('Production restore forces URL rewrite off server-side',
-    substr_count($actions, "mg_saoluu_environment() === 'production' ? false : isset(\$_POST['change_url'])") >= 2
-    && str_contains($render, 'bị khóa trên web thật'));
-
-ui_check('version upgrade revokes any inherited Production Restore unlock',
-    str_contains($lifecycle, "delete_transient('mg_saoluu_production_restore_unlocked')"));
+ui_check('admin CSS and JS packaged assets remain non-empty',
+    strlen($css) > 5000 && strlen($js) > 3000);
 
 echo "ADMIN UI TESTS $count/$count PASS\n";
