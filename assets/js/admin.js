@@ -94,6 +94,7 @@
         backup: 'Đang sao lưu và kiểm tra…',
         pack_backup: 'Đang tạo Pack mã hóa…',
         verify_backup: 'Đang xác minh…',
+        verify_restore_upload: 'Đang upload và xác minh file sao lưu…',
         pack_restore: 'Đang xác minh Pack và chuẩn bị Restore…',
         pack_restore_upload: 'Đang upload, xác minh Pack và chuẩn bị Restore…',
         restore_saved: 'Đang khôi phục bản đang lưu…',
@@ -101,36 +102,91 @@
         restore_sql_upload: 'Đang nhập SQL…'
     };
 
-    document.addEventListener('change', function (event) {
-        var field = event.target.closest('input[type="file"][data-mgsl-max-upload]');
-        if (!field) return;
+    function mgslValidateUploadField(field) {
         var limit = Number(field.getAttribute('data-mgsl-max-upload')) || 0;
         var picked = field.files && field.files[0];
+        var allowed = (field.getAttribute('data-mgsl-extensions') || '')
+            .toLowerCase().split(',').map(function (item) { return item.trim(); }).filter(Boolean);
+        var name = picked ? String(picked.name || '').toLowerCase() : '';
         var tooLarge = !!(picked && limit && picked.size > limit);
-        field.setCustomValidity(tooLarge
-            ? 'File vượt giới hạn upload. Hãy dùng bản đang lưu hoặc điều chỉnh PHP chỉ trên clone.'
-            : '');
+        var wrongType = !!(picked && allowed.length && !allowed.some(function (extension) {
+            return name.endsWith(extension);
+        }));
+        var message = '';
+        if (tooLarge) message = 'File vượt giới hạn upload hiện tại.';
+        else if (wrongType) message = 'Loại file không được hỗ trợ. Chỉ nhận: ' + allowed.join(', ') + '.';
+        field.setCustomValidity(message);
 
         var form = field.closest('form');
+        var zone = field.closest('[data-mgsl-dropzone]');
+        if (zone) {
+            zone.classList.toggle('has-file', !!picked && !message);
+            var fileName = zone.querySelector('[data-mgsl-upload-name]');
+            if (fileName) fileName.textContent = picked ? picked.name : 'Chưa chọn file';
+        }
         if (form) {
             var submit = form.querySelector('button[type="submit"], input[type="submit"], button.button-primary');
             if (submit) {
-                if (tooLarge) {
-                    if (!submit.disabled) submit.dataset.mgslSizeDisabled = '1';
+                if (message) {
+                    if (!submit.disabled) submit.dataset.mgslUploadDisabled = '1';
                     submit.disabled = true;
-                } else if (submit.dataset.mgslSizeDisabled === '1') {
+                } else if (submit.dataset.mgslUploadDisabled === '1') {
                     submit.disabled = false;
-                    delete submit.dataset.mgslSizeDisabled;
+                    delete submit.dataset.mgslUploadDisabled;
                 }
             }
             var warning = form.querySelector('[data-mgsl-upload-warning]');
             if (warning) {
-                warning.textContent = tooLarge ? field.validationMessage : '';
-                warning.hidden = !tooLarge;
+                warning.textContent = message;
+                warning.hidden = !message;
             }
         }
+        if (message) field.reportValidity();
+    }
 
-        if (tooLarge) field.reportValidity();
+    document.addEventListener('change', function (event) {
+        var field = event.target.closest('input[type="file"][data-mgsl-max-upload]');
+        if (field) mgslValidateUploadField(field);
+    });
+
+    document.addEventListener('dragenter', function (event) {
+        var zone = event.target.closest('[data-mgsl-dropzone]');
+        if (!zone) return;
+        event.preventDefault();
+        zone.classList.add('is-dragging');
+    });
+
+    document.addEventListener('dragover', function (event) {
+        var zone = event.target.closest('[data-mgsl-dropzone]');
+        if (!zone) return;
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        zone.classList.add('is-dragging');
+    });
+
+    document.addEventListener('dragleave', function (event) {
+        var zone = event.target.closest('[data-mgsl-dropzone]');
+        if (!zone) return;
+        var related = event.relatedTarget;
+        if (!related || !zone.contains(related)) zone.classList.remove('is-dragging');
+    });
+
+    document.addEventListener('drop', function (event) {
+        var zone = event.target.closest('[data-mgsl-dropzone]');
+        if (!zone) return;
+        event.preventDefault();
+        zone.classList.remove('is-dragging');
+        var field = zone.querySelector('input[type="file"][data-mgsl-max-upload]');
+        var files = event.dataTransfer && event.dataTransfer.files;
+        if (!field || !files || !files.length) return;
+        try {
+            var transfer = new DataTransfer();
+            transfer.items.add(files[0]);
+            field.files = transfer.files;
+        } catch (error) {
+            try { field.files = files; } catch (ignored) { return; }
+        }
+        field.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
     document.addEventListener('submit', function (event) {
