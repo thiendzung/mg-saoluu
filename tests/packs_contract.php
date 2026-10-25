@@ -42,7 +42,7 @@ require_once $plugin . '/includes/packs.php';
 
 $registry=mg_saoluu_pack_registry();
 check_pack('pack registry stays small and explicit',
-    array_keys($registry)===['settings','content','users','full_db']);
+    array_keys($registry)===['settings','content','full_db']);
 
 check_pack('settings pack excludes WordPress transient rows',
     str_contains(mg_saoluu_pack_settings_predicate(), "LEFT(option_name,11) <> '_transient_'")
@@ -54,7 +54,6 @@ check_pack('content pack keeps complete WordPress content dependency group',
     && $content_tables===['wp_posts','wp_postmeta','wp_terms','wp_term_taxonomy','wp_term_relationships','wp_termmeta','wp_comments','wp_commentmeta']);
 
 check_pack('settings pack is only wp_options', mg_saoluu_pack_tables('settings')===['wp_options']);
-check_pack('users pack is users plus usermeta', mg_saoluu_pack_tables('users')===['wp_users','wp_usermeta']);
 check_pack('unsafe SQL identifier rejected', mg_saoluu_pack_quote_identifier('wp_options;DROP')==='');
 
 if (!mg_saoluu_pack_crypto_available()) {
