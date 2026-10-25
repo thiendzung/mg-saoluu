@@ -498,6 +498,32 @@ file_put_contents($orphan, 'orphan');
 $orphan_context = mg_saoluu_rollback_checkpoint_context($orphan, ['purpose' => 'rollback'], true);
 test('unreferenced rollback purpose fails closed',is_wp_error($orphan_context)&&$orphan_context->get_error_code()==='rollback_checkpoint_stale');
 
+$pairs = mg_saoluu_domain_rewrite_pairs(
+    'http://mgsl-qa.test/',
+    'http://mgsl-qa.test/',
+    'https://mgsl-restore.test/',
+    'https://mgsl-restore.test/'
+);
+test('domain rewrite maps source http to current target',
+    ($pairs['http://mgsl-qa.test'] ?? '') === 'https://mgsl-restore.test');
+test('domain rewrite also maps source https variant to current target',
+    ($pairs['https://mgsl-qa.test'] ?? '') === 'https://mgsl-restore.test');
+
+$subpath_pairs = mg_saoluu_domain_rewrite_pairs(
+    'http://source.test/',
+    'http://source.test/wp/',
+    'https://target.test/',
+    'https://target.test/wp/'
+);
+test('domain rewrite processes specific site URL before home URL',
+    str_ends_with((string) array_key_first($subpath_pairs), '/wp'));
+
+$restore_source_order = file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php');
+$source_assign_pos = strpos($restore_source_order, "\$source_home = (string) (\$manifest['source_url'] ?? '')");
+$source_guard_pos = strpos($restore_source_order, "if (\$source_home === '' || \$source_site === '')");
+test('source URLs are assigned before source-url guard',
+    $source_assign_pos !== false && $source_guard_pos !== false && $source_assign_pos < $source_guard_pos);
+
 // Database URL migration must process a table containing the old URL at most once.
 class FixtureDB {
  public $prefix='wp_';public $rows=[];public $updates=[];
