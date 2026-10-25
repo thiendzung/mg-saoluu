@@ -326,7 +326,7 @@ test('restore health accepts present active theme',
     mg_saoluu_restore_health_check('https://motgu.com/')===true);
 $GLOBALS['test_options']['stylesheet']='';
 
-test('debug enabled on clone',mg_saoluu_debug_enabled()===true);
+test('debug defaults off without explicit flag',mg_saoluu_debug_enabled()===false);
 test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
 test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
 test('debug file outside webroot',mg_saoluu_storage_path_safe(mg_saoluu_debug_file()));
