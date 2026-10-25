@@ -145,19 +145,13 @@ if (!mgw_safe_file($job_file)) mgw_fail('Unsafe job file.', 3);
 $job = mgw_read_json($job_file);
 if (!$job || (int)($job['version'] ?? 0) !== 1) mgw_fail('Invalid job.', 4);
 
-$required = ['job_id','journal','work_dir','global_lock','pack','database','mysql_binary','mysqldump_binary','mysql_config','target_sql','expected_state_hash','dump_options','tables','cleanup_sql'];
+$required = ['job_id','journal','work_dir','pack','database','mysql_binary','mysqldump_binary','mysql_config','target_sql','expected_state_hash','dump_options','tables','cleanup_sql'];
 foreach ($required as $key) if (!array_key_exists($key, $job)) mgw_fail('Missing job field.', 5);
 
 $work = realpath((string)$job['work_dir']);
 if (!$work || !is_dir($work) || is_link($work)) mgw_fail('Unsafe work dir.', 6);
 $journal = (string)$job['journal'];
 if (dirname($journal) !== $work || dirname((string)$job['target_sql']) !== $work || dirname((string)$job['mysql_config']) !== $work) mgw_fail('Job paths escape work dir.', 7);
-
-$lock_path = (string)$job['global_lock'];
-if (is_link($lock_path) || dirname($lock_path) === $work) mgw_fail('Unsafe global lock.', 8);
-$lock = @fopen($lock_path, 'c+');
-if (!$lock || !flock($lock, LOCK_EX)) mgw_fail('Cannot acquire Backup/Restore handoff lock.', 8);
-@chmod($lock_path, 0600);
 
 $started = microtime(true);
 $checkpoint = $work . '/checkpoint.sql';
@@ -169,7 +163,7 @@ $checkpoint_hash = mgw_build_checkpoint($job, $checkpoint);
 if ($checkpoint_hash === '') {
     mgw_journal($job, 'checkpoint_failed', ['error_code' => 'checkpoint_dump_failed']);
     mgw_cleanup([$target, $config, $checkpoint, $job_file]);
-    flock($lock, LOCK_UN); fclose($lock); exit(20);
+    exit(20);
 }
 
 $import_ok = mgw_import($job, $target);
@@ -185,7 +179,7 @@ if (!$import_ok) {
         'duration_ms' => (int)round((microtime(true) - $started) * 1000),
     ]);
     mgw_cleanup([$target, $config, $checkpoint, $job_file]);
-    flock($lock, LOCK_UN); fclose($lock); exit($reverted ? 21 : 22);
+    exit($reverted ? 21 : 22);
 }
 
 $actual_hash = mgw_current_hash($job, $work);
@@ -206,7 +200,7 @@ if ($actual_hash === '' || !hash_equals($expected_hash, strtolower($actual_hash)
         'duration_ms' => (int)round((microtime(true) - $started) * 1000),
     ]);
     mgw_cleanup([$target, $config, $checkpoint, $job_file]);
-    flock($lock, LOCK_UN); fclose($lock); exit($reverted ? 23 : 24);
+    exit($reverted ? 23 : 24);
 }
 
 mgw_journal($job, 'completed', [
@@ -217,6 +211,4 @@ mgw_journal($job, 'completed', [
     'duration_ms' => (int)round((microtime(true) - $started) * 1000),
 ]);
 mgw_cleanup([$target, $config, $checkpoint, $job_file]);
-flock($lock, LOCK_UN);
-fclose($lock);
 exit(0);
