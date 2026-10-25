@@ -65,10 +65,16 @@ mkdir($hash_root,0700,true);
 $hash_a=$hash_root.'/settings-a.sql';
 $hash_b=$hash_root.'/settings-b.sql';
 $hash_c=$hash_root.'/settings-c.sql';
-file_put_contents($hash_a, "REPLACE INTO `wp_options` VALUES (17,'blogdescription','Find Art That Feels Like You','yes');\n");
-file_put_contents($hash_b, "REPLACE INTO `wp_options` VALUES (999,'blogdescription','Find Art That Feels Like You','yes');\n");
-file_put_contents($hash_c, "REPLACE INTO `wp_options` VALUES (999,'blogdescription','Different value','yes');\n");
-check_pack('settings state hash ignores physical option_id only',
+file_put_contents($hash_a,
+    "REPLACE INTO `wp_options` VALUES (17,'blogdescription','Find Art That Feels Like You','yes');\n"
+    . "REPLACE INTO `wp_options` VALUES (18,'blogname','MOTGU','yes');\n");
+file_put_contents($hash_b,
+    "REPLACE INTO `wp_options` VALUES (999,'blogname','MOTGU','yes');\n"
+    . "REPLACE INTO `wp_options` VALUES (120,'blogdescription','Find Art That Feels Like You','yes');\n");
+file_put_contents($hash_c,
+    "REPLACE INTO `wp_options` VALUES (999,'blogname','MOTGU','yes');\n"
+    . "REPLACE INTO `wp_options` VALUES (120,'blogdescription','Different value','yes');\n");
+check_pack('settings state hash ignores physical option_id and row order',
     mg_saoluu_pack_state_hash_file($hash_a,'settings')===mg_saoluu_pack_state_hash_file($hash_b,'settings'));
 check_pack('settings state hash still detects option value changes',
     mg_saoluu_pack_state_hash_file($hash_a,'settings')!==mg_saoluu_pack_state_hash_file($hash_c,'settings'));
