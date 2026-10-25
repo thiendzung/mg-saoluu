@@ -303,7 +303,7 @@ function mg_saoluu_pack_manifest_from_zip($zip_file) {
     $manifest = json_decode((string) $raw, true);
     if (!is_array($manifest)
         || ($manifest['format'] ?? '') !== 'mg-saoluu-data-pack'
-        || (int) ($manifest['version'] ?? 0) !== 1
+        || !in_array((int) ($manifest['version'] ?? 0), [1, 2], true)
         || !mg_saoluu_pack_definition($manifest['pack'] ?? '')) {
         return new WP_Error('pack_manifest', 'Manifest Pack không hợp lệ.');
     }
@@ -375,12 +375,14 @@ function mg_saoluu_create_pack_backup($pack, $note = '', $password = '', $apply_
 
     $dump = mg_saoluu_pack_dump_sql($pack, $sql_file);
     if (is_wp_error($dump)) return $dump;
+    $state_hash = (string) ($dump['state_hash'] ?? '');
+    if (!preg_match('/^[a-f0-9]{64}$/', $state_hash)) { @unlink($sql_file); return new WP_Error('pack_state_hash', 'Pack thiếu state hash hậu kiểm.'); }
     $sql_sha = @hash_file('sha256', $sql_file);
     if (!$sql_sha) { @unlink($sql_file); return new WP_Error('pack_sql_hash', 'Không fingerprint được SQL Pack.'); }
 
     $manifest = [
         'format' => 'mg-saoluu-data-pack',
-        'version' => 1,
+        'version' => 2,
         'plugin_version' => MG_SAOLUU_VERSION,
         'pack' => $pack,
         'pack_label' => $definition['label'],
@@ -393,6 +395,8 @@ function mg_saoluu_create_pack_backup($pack, $note = '', $password = '', $apply_
         'settings_scope' => $pack === 'settings' ? 'exclude_transients' : '',
         'sql_sha256' => $sql_sha,
         'sql_size' => (int) filesize($sql_file),
+        'state_hash' => $state_hash,
+        'state_hash_algorithm' => 'sha256-mysqldump-order-by-primary-v1',
         'note' => sanitize_text_field($note),
         'created_at' => gmdate('c'),
     ];
@@ -422,6 +426,7 @@ function mg_saoluu_create_pack_backup($pack, $note = '', $password = '', $apply_
     $verified = mg_saoluu_verify_pack_backup($target, $password);
     if (is_wp_error($verified)
         || ($verified['sql_sha256'] ?? '') !== $sql_sha
+        || ($verified['state_hash'] ?? '') !== $state_hash
         || ($verified['pack'] ?? '') !== $pack) {
         @unlink($target);
         return new WP_Error('pack_verify_failed', 'Pack cuối không qua decrypt/decompress/manifest verification.');
