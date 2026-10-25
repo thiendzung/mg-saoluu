@@ -1,3 +1,12 @@
+## 1.3.0 — Guarded Production Full Site Restore (2026-10-25)
+
+- Promote the accepted RC13 Backup/Verify/drag-drop behavior to Stable only through an explicit Production Full Site Restore capability gate; version text alone cannot authorize live writes.
+- Production Full Site Restore requires a fresh Ed25519 Local approval, 10-minute unlock, administrator re-authentication, exact host + RESTORE phrase, same-host/same-prefix signed backup checks, healthy baseline and mysql/mysqldump availability.
+- Production restore forces domain/URL rewrite off server-side.
+- Plugin version upgrades revoke any inherited Production Restore unlock window.
+- Production Pack Restore remains hard-blocked in UI, action handling and Pack engine.
+- Full Site upload may be verified non-destructively before the separately authorized Restore submission.
+
 ## 1.3.0-rc13 — Restore upload UX + Production verify-only (2026-10-25)
 
 - Add real drag-and-drop for Restore upload boxes with selected-file feedback.
