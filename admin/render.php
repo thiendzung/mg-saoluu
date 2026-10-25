@@ -496,7 +496,7 @@ function mg_saoluu_render_page() {
                         <p class="mgsl-note mgsl-danger" data-mgsl-upload-warning hidden></p>
                         <div class="mgsl-form-row two">
                             <div class="mgsl-field"><label>Recovery Key / mật khẩu backup</label><input type="password" name="backup_password" autocomplete="current-password"></div>
-                            <div class="mgsl-field"><label>Khôi phục</label><select name="restore_mode"><option value="database">Chỉ database</option><option value="files_database">Database + files</option></select></div>
+                            <div class="mgsl-field"><label>Phạm vi Restore</label><strong>Database + files (Full Site)</strong><input type="hidden" name="restore_mode" value="files_database"></div>
                         </div>
                         <div class="mgsl-sensitive-box">
                             <div class="mgsl-field"><label>Mật khẩu tài khoản quản trị hiện tại</label><input type="password" name="admin_password" autocomplete="current-password" required></div>
