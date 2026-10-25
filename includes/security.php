@@ -292,6 +292,7 @@ function mg_saoluu_security_output_get($consume = true) {
 }
 
 function mg_saoluu_security_create_restore_challenge() {
+    if (!mg_saoluu_production_full_restore_enabled()) return new WP_Error('production_restore_disabled', 'Build này chưa được phép Full Site Restore trên Production.');
     if (mg_saoluu_environment() !== 'production') return new WP_Error('challenge_environment', 'Yêu cầu mở khóa Restore chỉ tạo trên web thật.');
     if (!mg_saoluu_security_trusted_signers()) return new WP_Error('challenge_no_signer', 'Chưa ghép nối thiết bị Local. Vào tab Bảo mật để ghép nối trước.');
     $challenge = [
@@ -321,6 +322,7 @@ function mg_saoluu_security_parse_restore_challenge($code) {
 }
 
 function mg_saoluu_security_sign_restore_challenge($code) {
+    if (!mg_saoluu_production_full_restore_enabled()) return new WP_Error('production_restore_disabled', 'Build này chưa được phép ký phê duyệt Full Site Restore Production.');
     if (mg_saoluu_environment() !== 'local') return new WP_Error('approval_source', 'Chỉ Local đã giữ private key mới ký yêu cầu Restore.');
     $challenge = mg_saoluu_security_parse_restore_challenge($code);
     if (is_wp_error($challenge)) return $challenge;
@@ -340,6 +342,7 @@ function mg_saoluu_security_sign_restore_challenge($code) {
 }
 
 function mg_saoluu_security_apply_restore_approval($code) {
+    if (!mg_saoluu_production_full_restore_enabled()) return new WP_Error('production_restore_disabled', 'Build này chưa được phép mở Full Site Restore Production.');
     if (mg_saoluu_environment() !== 'production') return new WP_Error('approval_target', 'Mã phê duyệt chỉ nhập trên web thật.');
     $code = trim((string) $code);
     if (strpos($code, 'MGAPPROVE1.') !== 0) return new WP_Error('approval_format', 'Mã phê duyệt không đúng định dạng.');
@@ -369,6 +372,7 @@ function mg_saoluu_security_apply_restore_approval($code) {
 
 function mg_saoluu_security_restore_unlock_info() {
     if (mg_saoluu_environment() !== 'production') return ['active' => true, 'expires_at' => 0];
+    if (!mg_saoluu_production_full_restore_enabled()) return ['active' => false, 'expires_at' => 0];
     $data = get_transient('mg_saoluu_production_restore_unlocked');
     if (!is_array($data) || (int) ($data['expires_at'] ?? 0) <= time()) return ['active' => false, 'expires_at' => 0];
     return array_merge(['active' => true], $data);
