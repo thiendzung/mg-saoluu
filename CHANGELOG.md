@@ -1,3 +1,13 @@
+## 1.3.0-rc6 — Exact rollback DB seal (2026-10-25)
+
+- Fix RC5 runtime mismatch caused by post-checkpoint mutations in `mg_options`.
+- Explicit rollback now treats the checkpoint DB as authoritative: after import + schema reconciliation, the finalizer skips re-applying the current target settings.
+- Capture raw `blog_public` directly from the options row and restore that exact stored value; the existing `pre_option_blog_public` filter continues to enforce non-production noindex without mutating the DB row.
+- Remove production-unlock transient deletion from target-settings restoration.
+- Move non-security binary discovery, system-check and backup-list caches from DB-backed Transients to WordPress Object Cache.
+- Retain RC5 private replay/audit JSON state and RC4 exact schema reconciliation.
+- Production mutation remains hard-blocked in RC6.
+
 ## 1.3.0-rc5 — Exact DB rollback state (2026-10-25)
 
 - Fix RC4 runtime blocker where table/view schema returned exactly to baseline but the stable DB hash still differed only in `mg_options`.
