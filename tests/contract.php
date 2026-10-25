@@ -586,11 +586,10 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// Stable release intentionally removes the RC-only hard block. Production restore
-// remains protected by signed unlock + password/host/phrase gates tested above
-// and by source host/signature checks in the restore engine.
-test('stable admin actions no longer advertise RC hard block',
-    !str_contains(MG_SAOLUU_VERSION, '-rc'));
+// RC7 deliberately keeps every Production Restore path hard-blocked while Pack
+// behavior is being accepted on an isolated clone/staging target.
+test('RC7 keeps production restore hard-block active',
+    str_contains(MG_SAOLUU_VERSION, '-rc'));
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 
 // WordPress-independent AES-GCM decryption: binary roundtrip + wrong-key block.
