@@ -72,10 +72,12 @@ ui_check('restore engine ignores environment mode and always restores Full Site'
     && str_contains($restore, '$change_url = true;')
     && !str_contains(substr($restore, strpos($restore, 'function mg_saoluu_restore_zip'), 5000), "'cross_env_production'"));
 
-ui_check('restore automatically rewrites source URLs to current target URLs',
-    str_contains($restore, "mg_saoluu_search_replace_database(\$source_home, \$target_home)")
-    && str_contains($restore, "mg_saoluu_search_replace_database(\$source_site, \$target_site)")
+ui_check('restore automatically rewrites both source URL schemes to current target URLs',
+    str_contains($restore, 'function mg_saoluu_domain_rewrite_pairs')
+    && str_contains($restore, "foreach (['https://', 'http://'] as \$scheme)")
+    && str_contains($restore, 'mg_saoluu_search_replace_database(\$old_url, \$new_url)')
     && str_contains($restore, "'domain_rewrite'")
+    && str_contains($restore, "'passes' => \$rewrite_passes")
     && str_contains($restore, "update_option('home', untrailingslashit(\$target_home))")
     && str_contains($restore, "update_option('siteurl', untrailingslashit(\$target_site))"));
 
