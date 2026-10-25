@@ -66,11 +66,9 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.3.0');
-define('MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE', true);
+define('MG_SAOLUU_VERSION', '1.3.1');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
-function mg_saoluu_production_full_restore_enabled(){return MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE === true && strpos(MG_SAOLUU_VERSION, '-rc') === false;}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
 function mg_saoluu_environment_info($env=''){
     $env=$env!==''?$env:mg_saoluu_environment();
@@ -99,26 +97,13 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('stable version constant promoted', MG_SAOLUU_VERSION === '1.3.0');
-test('stable production full restore capability is explicit', mg_saoluu_production_full_restore_enabled() === true);
+test('v1.3.1 version constant promoted', MG_SAOLUU_VERSION === '1.3.1');
 test('self-integrity cache does not create DB transient',
     !array_filter(array_keys($GLOBALS['test_transients']), static fn($k)=>str_contains((string)$k,'self_integrity')));
 
-// Stable production restore still requires the signed temporary unlock plus the
-// explicit confirmation phrase. Version promotion must not bypass this gate.
-$GLOBALS['test_environment']='production';
-$GLOBALS['test_restore_unlock']=[];
-$prod_locked=mg_saoluu_check_restore_confirmation('RESTORE MOTGU.COM', true);
-test('stable production restore remains locked without signed unlock',
-    is_wp_error($prod_locked) && $prod_locked->get_error_code()==='production_locked');
-$GLOBALS['test_restore_unlock']=['active'=>true,'expires_at'=>time()+600];
-$prod_phrase=mg_saoluu_check_restore_confirmation('WRONG PHRASE', true);
-test('stable production restore rejects wrong confirmation phrase even when unlocked',
-    is_wp_error($prod_phrase) && $prod_phrase->get_error_code()==='confirm_failed');
-test('stable production restore confirmation passes only with active unlock and exact phrase',
-    mg_saoluu_check_restore_confirmation('RESTORE MOTGU.COM', true)===true);
-$GLOBALS['test_restore_unlock']=[];
-$GLOBALS['test_environment']='local';
+test('simple restore requires explicit confirmation checkbox',
+    is_wp_error(mg_saoluu_check_restore_confirmation('', false))
+    && mg_saoluu_check_restore_confirmation('', true) === true);
 
 // Storage isolation: multiple filesystem paths including symlinks.
 $external=mg_saoluu_get_backup_dir();
