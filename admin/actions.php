@@ -399,7 +399,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
 
         if ($action === 'pack_restore_upload') {
             if (mg_saoluu_environment() === 'production') {
-                $status='error'; $message='RC10 khóa Pack Restore trên Production. Chỉ thử trên clone/staging.'; return;
+                $status='error'; $message='Bản RC khóa Pack Restore trên Production. Chỉ thử trên clone/staging.'; return;
             }
             if (!isset($_POST['pack_restore_confirm'])) {
                 $status='error'; $message='Hãy xác nhận phục hồi đúng Pack đã chọn.'; return;
