@@ -156,7 +156,7 @@ if (dirname($journal) !== $work || dirname((string)$job['target_sql']) !== $work
 $lock_path = (string)$job['global_lock'];
 if (is_link($lock_path) || dirname($lock_path) === $work) mgw_fail('Unsafe global lock.', 8);
 $lock = @fopen($lock_path, 'c+');
-if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) mgw_fail('Another Backup/Restore operation is running.', 8);
+if (!$lock || !flock($lock, LOCK_EX)) mgw_fail('Cannot acquire Backup/Restore handoff lock.', 8);
 @chmod($lock_path, 0600);
 
 $started = microtime(true);
