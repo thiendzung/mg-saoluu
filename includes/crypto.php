@@ -349,9 +349,9 @@ function mg_saoluu_decrypt_pack_file($source, $target, $password) {
     $chunk_size = (int) ($header['chunk_size'] ?? 0);
     if (!is_string($salt) || strlen($salt) !== SODIUM_CRYPTO_PWHASH_SALTBYTES
         || !is_string($stream_header) || strlen($stream_header) !== SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_HEADERBYTES
-        || $opslimit < 1 || $opslimit > SODIUM_CRYPTO_PWHASH_OPSLIMIT_SENSITIVE
-        || $memlimit < SODIUM_CRYPTO_PWHASH_MEMLIMIT_INTERACTIVE || $memlimit > 512 * 1024 * 1024
-        || $chunk_size < 65536 || $chunk_size > 8 * 1024 * 1024) {
+        || $opslimit !== SODIUM_CRYPTO_PWHASH_OPSLIMIT_INTERACTIVE
+        || $memlimit !== SODIUM_CRYPTO_PWHASH_MEMLIMIT_INTERACTIVE
+        || $chunk_size !== 1024 * 1024) {
         fclose($in);
         return new WP_Error('pack_header', 'Thông số bảo mật Pack v2 không hợp lệ.');
     }
