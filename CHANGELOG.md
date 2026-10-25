@@ -1,3 +1,13 @@
+## 1.3.0-rc8 — Minimal final DB writer (2026-10-25)
+
+- Fix RC7 false-success risk caused by third-party WordPress/plugin writes around Restore.
+- WordPress request now only verifies Pack, validates host/prefix/schema and stages private job material.
+- Standalone CLI worker never loads WordPress/plugins/themes/mu-plugins; it waits on the existing operation flock until the PHP request fully exits, then becomes the final DB writer.
+- Worker creates an exact private checkpoint of the selected scope, imports, re-dumps the same scope using deterministic mysqldump ordering, compares state hash, and automatically rolls back on any mismatch.
+- No option-name blacklist: ACF/RankMath/Woo options remain ordinary restored data.
+- DB cleanliness acceptance is scoped to MG Sao Luu-owned writes; unrelated plugins may legitimately create their own transients when wp-admin is opened.
+- RC8 keeps Production Restore hard-blocked.
+
 ## 1.3.0-rc7 — Simple Pack Backup/Restore (2026-10-25)
 
 - Stop the migration/rollback patch train and rebuild the next release from v1.2.1 Stable.
