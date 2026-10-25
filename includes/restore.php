@@ -778,9 +778,10 @@ function mg_saoluu_backup_prefix_preflight($manifest, $target_prefix, $cross_sit
 }
 
 function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true, $password = '') {
-    // RC builds may create backups on production, but must never overwrite a live DB.
-    if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-        return new WP_Error('rc_production_restore_disabled', 'Bản RC chỉ được restore trên clone. Dùng Recovery Runbook độc lập khi cần cứu site production.');
+    // Production Restore is enabled only by an explicit stable-build capability.
+    // A version rename/tag alone cannot authorize writes to a live database.
+    if (mg_saoluu_environment() === 'production' && !mg_saoluu_production_full_restore_enabled()) {
+        return new WP_Error('production_restore_disabled', 'Build này chưa được phép Full Site Restore trên Production. Dùng Recovery Runbook nếu cần cứu site.');
     }
     if (mg_saoluu_restore_journal_unfinished(mg_saoluu_restore_journal())) {
         return new WP_Error('restore_unfinished', 'Phát hiện lần restore trước chưa hoàn tất. Không ghi tiếp database; kiểm tra checkpoint và Recovery Runbook.');
