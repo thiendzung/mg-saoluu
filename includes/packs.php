@@ -672,16 +672,12 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
     if (is_wp_error($cleanup)) { @unlink($job_config); @unlink($target_sql); return $cleanup; }
     $journal = $work . '/journal.json';
     $job_file = $work . '/job.json';
-    $private_temp = mg_saoluu_private_temp_dir();
-    if (is_wp_error($private_temp)) { @unlink($job_config); @unlink($target_sql); return $private_temp; }
-    $global_lock = trailingslashit($private_temp) . 'mg-saoluu-operation.lock';
 
     $job = [
         'version' => 1,
         'job_id' => $job_id,
         'journal' => $journal,
         'work_dir' => $work,
-        'global_lock' => $global_lock,
         'pack' => $pack,
         'database' => DB_NAME,
         'mysql_binary' => $mysql,
