@@ -19,6 +19,8 @@ $main = src($plugin, 'mg-saoluu.php');
 $lifecycle = src($plugin, 'includes/lifecycle.php');
 $backup = src($plugin, 'includes/backup.php');
 $restore = src($plugin, 'includes/restore.php');
+$environment = src($plugin, 'includes/environment.php');
+$diagnostics = src($plugin, 'includes/diagnostics.php');
 $actions = src($plugin, 'admin/actions.php');
 $render = src($plugin, 'admin/render.php');
 $js = src($plugin, 'assets/js/admin.js');
@@ -45,6 +47,16 @@ ui_check('simple backup action always creates safe_full without Pack mode',
 ui_check('legacy Pack signer SQL restore actions are backend-blocked',
     str_contains($actions, "'pack_backup','pack_restore','pack_restore_upload','verify_restore_upload','restore_sql_upload'")
     && str_contains($actions, "'security_restore_challenge','security_sign_restore_challenge','security_apply_restore_approval'"));
+
+ui_check('environment modes have no active admin email or noindex side effects',
+    !str_contains($environment, "add_action('admin_bar_menu', 'mg_saoluu_admin_bar_environment'")
+    && !str_contains($environment, "add_filter('pre_wp_mail'")
+    && !str_contains($lifecycle, "add_filter('pre_option_blog_public'")
+    && str_contains($actions, "'save_security','save_settings'"));
+
+ui_check('diagnostics are explicit opt-in and do not auto-enable by environment',
+    str_contains($diagnostics, "defined('MG_SAOLUU_DEBUG') && MG_SAOLUU_DEBUG === true")
+    && !str_contains($diagnostics, "mg_saoluu_environment() !== 'production'"));
 
 ui_check('restore action requires only explicit checkbox plus plugin integrity',
     str_contains($actions, "if (!isset(\$_POST['restore_confirm']))")
