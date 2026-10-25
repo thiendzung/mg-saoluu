@@ -207,7 +207,7 @@ function mg_saoluu_pack_build_zip($sql_file, $manifest, $zip_file, $prefer_store
 function mg_saoluu_pack_compress_zip($zip_file, $payload_file) {
     $zstd = mg_saoluu_pack_zstd_binary();
     if ($zstd !== '') {
-        $command = escapeshellarg($zstd) . ' -q -1 -T0 -f ' . escapeshellarg($zip_file) . ' -o ' . escapeshellarg($payload_file) . ' 2>&1';
+        $command = escapeshellarg($zstd) . ' -q -1 -T1 -f ' . escapeshellarg($zip_file) . ' -o ' . escapeshellarg($payload_file) . ' 2>&1';
         $out = []; $status = 1; @set_time_limit(0); exec($command, $out, $status);
         if ($status !== 0 || !is_file($payload_file) || filesize($payload_file) < 1) {
             @unlink($payload_file);
