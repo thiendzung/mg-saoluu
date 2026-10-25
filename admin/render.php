@@ -368,9 +368,37 @@ function mg_saoluu_render_page() {
                     <?php endif; ?>
                 </section>
             <?php endif; ?>
+            <section class="mgsl-card">
+                <h2 class="mgsl-title">Khôi phục Pack v2</h2>
+                <p>Chỉ thay đúng phần dữ liệu trong Pack. Không đổi domain, không chạy migration, không dựng transaction toàn website.</p>
+                <?php if (!$pack_files): ?>
+                    <p>Chưa có Pack v2.</p>
+                <?php else: ?>
+                    <form method="post" onsubmit="return confirm('Khôi phục đúng Pack đã chọn? Plugin sẽ tạo checkpoint cùng Pack trước khi ghi.');">
+                        <?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
+                        <input type="hidden" name="mg_action" value="pack_restore">
+                        <input type="hidden" name="return_tab" value="restore">
+                        <div class="mgsl-form-row">
+                            <div class="mgsl-field"><label>Pack</label><select name="file_name" required>
+                                <?php foreach ($pack_files as $pack_file): $pack_name=basename($pack_file); $pack_meta=$metadata[$pack_name]??[]; ?>
+                                    <option value="<?php echo esc_attr($pack_name); ?>"><?php echo esc_html(($pack_meta['pack']??'pack') . ' · ' . $pack_name); ?></option>
+                                <?php endforeach; ?>
+                            </select></div>
+                            <div class="mgsl-field"><label>Recovery Key / mật khẩu riêng</label><input type="password" name="backup_password" autocomplete="current-password" placeholder="Để trống nếu dùng Recovery Key mặc định"></div>
+                        </div>
+                        <p><label><input type="checkbox" name="pack_restore_confirm" value="1" required> Tôi hiểu Pack này sẽ thay đúng nhóm dữ liệu tương ứng</label></p>
+                        <button class="button button-primary" <?php disabled(empty($self_integrity['ok']) || $env==='production'); ?>>Khôi phục Pack</button>
+                    </form>
+                <?php endif; ?>
+                <?php if ($env === 'production'): ?><div class="mgsl-note mgsl-danger">RC7 khóa Pack Restore trên Production. Chỉ runtime-test trên clone/staging.</div><?php endif; ?>
+            </section>
+
+            <details class="mgsl-card">
+                <summary><strong>Restore Full Site / định dạng Stable cũ</strong></summary>
             <section class="mgsl-card"><h2 class="mgsl-title">Khôi phục từ bản đang lưu</h2><p class="mgsl-small">Không cần upload lại nếu file đã có trên máy chủ. Checkpoint liên kết được đánh dấu; vẫn phải xác nhận trước khi ghi đè.</p><?php if (!$files): ?><p>Chưa có bản sao.</p><?php else: ?><form method="post" onsubmit="return confirm('Dữ liệu hiện tại sẽ bị thay thế. Tiếp tục?');"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="restore_saved"><input type="hidden" name="return_tab" value="restore"><div class="mgsl-form-row"><div class="mgsl-field"><label>Chọn bản sao</label><select name="file_name"><?php foreach ($files as $file): ?><option value="<?php echo esc_attr(basename($file)); ?>"><?php echo esc_html(basename($file)); ?><?php if ($checkpoint_name && basename($file) === $checkpoint_name): ?> · Checkpoint liên kết<?php endif; ?></option><?php endforeach; ?></select></div><div class="mgsl-field"><label>Phần cần phục hồi</label><select name="restore_mode"><option value="database">Chỉ database</option><option value="files_database">File website + database</option></select></div><div class="mgsl-field"><label>Nhập câu xác nhận</label><input type="text" name="restore_phrase" placeholder="<?php echo esc_attr($phrase); ?>" required></div><div><button class="button button-secondary" <?php disabled(empty($self_integrity['ok']) || ($env==='production' && (!$production_unlocked || strpos(MG_SAOLUU_VERSION, '-rc') !== false))); ?> style="width:100%">Khôi phục</button></div></div><p class="mgsl-field"><label>Mật khẩu nếu bản sao đã mã hóa</label><input type="password" name="backup_password" autocomplete="current-password" placeholder="Để trống nếu bản sao không mã hóa"></p><?php if ($env === 'production'): ?><div class="mgsl-sensitive-box"><div class="mgsl-field"><label>Mật khẩu tài khoản quản trị hiện tại</label><input type="password" name="admin_password" autocomplete="current-password" required></div><div class="mgsl-field"><label>Nhập lại domain web thật</label><input type="text" name="restore_host" placeholder="<?php echo esc_attr(mg_saoluu_host()); ?>" required></div><p class="mgsl-small mgsl-muted">Ngoài chữ ký Local, thao tác vẫn yêu cầu mật khẩu admin + câu RESTORE đúng domain. Sai 5 lần sẽ khóa 30 phút.</p></div><?php endif; ?><p><label><input type="checkbox" name="change_url" value="1" <?php checked($env !== 'production'); ?>> Tự đổi tên miền nguồn thành tên miền hiện tại</label></p><p><label><input type="checkbox" name="restore_confirm" value="1" required> Tôi hiểu dữ liệu hiện tại sẽ bị thay thế</label></p></form><?php endif; ?></section>
+            </details>
             <?php if ($env !== 'production'): ?>
-            <details class="mgsl-card"><summary><strong>Nhập .mgbackup/.zip trên clone Local/Staging</strong></summary>
+            <details class="mgsl-card"><summary><strong>Nhập .mgbackup/.zip Stable cũ trên clone Local/Staging</strong></summary>
             <p>Chỉ dùng clone riêng, database riêng và file nguồn đáng tin cậy. Database hiện tại bị thay thế.</p>
             <div class="mgsl-note <?php echo $zip_limit < 100 * 1024 * 1024 ? 'mgsl-warning' : ''; ?>">
                 <strong>Giới hạn upload PHP hiện tại: <?php echo esc_html(size_format($zip_limit)); ?>.</strong>
