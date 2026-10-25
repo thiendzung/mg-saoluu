@@ -310,6 +310,68 @@ function mg_saoluu_pack_manifest_from_zip($zip_file) {
     return $manifest;
 }
 
+function mg_saoluu_pack_upload_limit() {
+    $php_limit = (int) wp_max_upload_size();
+    $hard_limit = 2 * 1024 * 1024 * 1024;
+    return $php_limit > 0 ? min($php_limit, $hard_limit) : 0;
+}
+
+function mg_saoluu_stage_pack_upload($file) {
+    if (!is_array($file)) return new WP_Error('pack_upload_missing', 'Chưa chọn file Pack.');
+    $error = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($error !== UPLOAD_ERR_OK) {
+        $messages = [
+            UPLOAD_ERR_INI_SIZE => 'File vượt upload_max_filesize của hosting.',
+            UPLOAD_ERR_FORM_SIZE => 'File vượt giới hạn của biểu mẫu.',
+            UPLOAD_ERR_PARTIAL => 'File chỉ được tải lên một phần.',
+            UPLOAD_ERR_NO_FILE => 'Chưa chọn file Pack.',
+            UPLOAD_ERR_NO_TMP_DIR => 'Hosting thiếu thư mục upload tạm.',
+            UPLOAD_ERR_CANT_WRITE => 'Hosting không ghi được file upload tạm.',
+            UPLOAD_ERR_EXTENSION => 'PHP extension đã chặn file upload.',
+        ];
+        return new WP_Error('pack_upload_error', $messages[$error] ?? 'Upload Pack thất bại.');
+    }
+
+    $limit = mg_saoluu_pack_upload_limit();
+    $reported_size = (int) ($file['size'] ?? 0);
+    if ($limit < 1) return new WP_Error('pack_upload_disabled', 'Hosting hiện không cho phép upload file.');
+    if ($reported_size < 1 || $reported_size > $limit) {
+        return new WP_Error('pack_upload_size', 'Dung lượng Pack vượt giới hạn upload hiện tại.');
+    }
+
+    $name = sanitize_file_name((string) ($file['name'] ?? ''));
+    if (strtolower((string) pathinfo($name, PATHINFO_EXTENSION)) !== 'mgbackup') {
+        return new WP_Error('pack_upload_type', 'Restore Pack trực tiếp chỉ nhận file .mgbackup.');
+    }
+
+    $tmp = (string) ($file['tmp_name'] ?? '');
+    if ($tmp === '' || !is_uploaded_file($tmp)) {
+        return new WP_Error('pack_upload_source', 'Nguồn upload không hợp lệ.');
+    }
+
+    $private = mg_saoluu_private_temp_dir();
+    if (is_wp_error($private)) return $private;
+    try { $token = bin2hex(random_bytes(10)); }
+    catch (Throwable $e) { return new WP_Error('pack_upload_temp', 'Không tạo được tên file upload private.'); }
+
+    $target = trailingslashit($private) . 'mg-pack-upload-' . $token . '.mgbackup';
+    if (!move_uploaded_file($tmp, $target)) {
+        return new WP_Error('pack_upload_move', 'Không chuyển được Pack vào vùng private.');
+    }
+    @chmod($target, 0600);
+    clearstatcache(true, $target);
+    $actual_size = is_file($target) ? (int) @filesize($target) : 0;
+    if ($actual_size < 1 || $actual_size > $limit) {
+        @unlink($target);
+        return new WP_Error('pack_upload_size', 'Dung lượng Pack sau upload không hợp lệ.');
+    }
+    if (!mg_saoluu_is_pack_backup($target)) {
+        @unlink($target);
+        return new WP_Error('pack_upload_format', 'File không có định dạng Pack v2 hợp lệ.');
+    }
+    return $target;
+}
+
 function mg_saoluu_pack_prepare_zip($backup_file, $password) {
     if (!is_readable($backup_file) || !is_file($backup_file)) return new WP_Error('pack_missing', 'Không đọc được Pack backup.');
     $password = (string) $password;
