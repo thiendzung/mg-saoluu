@@ -68,7 +68,10 @@ ui_check('uploaded Pack is deleted after staging restore job',
 ui_check('local upload has real browser size validation and operation feedback',
     str_contains($js, "pack_restore_upload:")
     && str_contains($js, 'data-mgsl-max-upload')
-    && str_contains($js, 'picked.size > limit'));
+    && str_contains($js, 'picked.size > limit')
+    && str_contains($js, 'mgslSizeDisabled')
+    && str_contains($js, 'submit.disabled = true')
+    && str_contains($render, 'data-mgsl-upload-warning'));
 
 ui_check('responsive CSS styles the two restore sources and upload box',
     str_contains($css, '.mgsl-restore-source-grid')
