@@ -27,11 +27,11 @@
     "includes/security.php": "efc11180240724c17d9068b6c10ee0f2527c2af9c831b7b550fc41abe3566262",
     "index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "mg-saoluu.php": "eb23a050b2534dba582138106a07563149599c31a044a38dc683659e0448d218",
-    "readme.txt": "c9f8f929409bd02fc0b1860fc9072cfa701073c1dff7e03e1e7dcf70a4b8a29b",
+    "readme.txt": "982a47c5fa7295d8e649336ec264b134998fb473059d605552dbb624f980e7de",
     "tools/recovery-verify.php": "69c3a6340616210aaffdfd5deec941c51d3f649d4f8ec3413f016506d9b934da",
     "uninstall.php": "cef8058aeeb6d808286f5b50cb7a7b887597114e37ddfc64ecf7590082ff2e51",
     "includes/diagnostics.php": "6e3960c4a4eba796df808d4e6653d3dec60c7ecaaf70ee8f21602429d3c17e44",
     "includes/schedule-health.php": "c5f368bf3e5c71a7506d15ebb6f0c60d7dcf20582bb27b73b6399488588d3f7f",
-    "includes/packs.php": "a6ed528f76af1d7765f78aebf1a7d5f6c1b43ee313008913fd7fa0027363f980"
+    "includes/packs.php": "6219a24a7a1623511bc5c8cdea0d3a456c419678521054ff420615b460cb9d7b"
   }
 }
