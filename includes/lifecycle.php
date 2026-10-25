@@ -245,21 +245,52 @@ function mg_saoluu_reschedule_cron() {
 
 add_action('admin_menu', 'mg_saoluu_register_menu');
 function mg_saoluu_register_menu() {
-    add_menu_page('MG Sao Lưu', 'MG Sao Lưu', 'manage_options', 'mg-saoluu-tools', 'mg_saoluu_render_page', 'dashicons-backup', 99);
+    $GLOBALS['mg_saoluu_admin_hook_suffix'] = add_menu_page(
+        'MG Sao Lưu',
+        'MG Sao Lưu',
+        'manage_options',
+        'mg-saoluu-tools',
+        'mg_saoluu_render_page',
+        'dashicons-backup',
+        99
+    );
 }
 
-
 function mg_saoluu_is_admin_page($hook = '') {
-    if ($hook === 'toplevel_page_mg-saoluu-tools') return true;
+    $registered = (string) ($GLOBALS['mg_saoluu_admin_hook_suffix'] ?? '');
+    if ($registered !== '' && (string) $hook === $registered) return true;
     $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
     return $page === 'mg-saoluu-tools';
+}
+
+function mg_saoluu_asset_version($relative) {
+    $path = MG_SAOLUU_DIR . ltrim((string) $relative, '/');
+    $mtime = is_file($path) ? @filemtime($path) : false;
+    return $mtime ? (string) $mtime : MG_SAOLUU_VERSION;
 }
 
 add_action('admin_enqueue_scripts', 'mg_saoluu_admin_assets');
 function mg_saoluu_admin_assets($hook) {
     if (!mg_saoluu_is_admin_page($hook)) return;
 
-    // Let WordPress serve/cache admin assets; do not inline-read CSS/JS on each request.
-    wp_enqueue_style('mg-saoluu-admin', MG_SAOLUU_URL . 'assets/css/admin.css', [], MG_SAOLUU_VERSION);
-    wp_enqueue_script('mg-saoluu-admin', MG_SAOLUU_URL . 'assets/js/admin.js', [], MG_SAOLUU_VERSION, true);
+    $style = 'mg-saoluu-admin';
+    wp_enqueue_style(
+        $style,
+        MG_SAOLUU_URL . 'assets/css/admin.css',
+        [],
+        mg_saoluu_asset_version('assets/css/admin.css')
+    );
+    // Critical fallback keeps the page readable even if a proxy/browser serves
+    // a stale or missing external stylesheet. Full design still lives in admin.css.
+    wp_add_inline_style(
+        $style,
+        '.mgsl-wrap,.mgsl-setup-wrap{max-width:1280px}.mgsl-card,.mgsl-setup-card{background:#fff;border:1px solid #dcdcde;border-radius:12px;padding:20px;margin:0 0 18px}.mgsl-grid,.mgsl-grid-2{display:grid;gap:16px}.mgsl-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.mgsl-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:960px){.mgsl-grid,.mgsl-grid-2{grid-template-columns:1fr}}'
+    );
+    wp_enqueue_script(
+        'mg-saoluu-admin',
+        MG_SAOLUU_URL . 'assets/js/admin.js',
+        [],
+        mg_saoluu_asset_version('assets/js/admin.js'),
+        true
+    );
 }
