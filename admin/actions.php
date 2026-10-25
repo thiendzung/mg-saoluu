@@ -298,7 +298,9 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     }
 
     if ($action === 'clear_log') {
-        delete_option('mg_saoluu_audit_log');
+        $private = mg_saoluu_private_state_delete('audit-log.json');
+        if (is_wp_error($private)) { $status='error'; $message=$private->get_error_message(); return; }
+        delete_option('mg_saoluu_audit_log'); // Legacy history only, explicit admin action.
         $status = 'success'; $message = 'Đã xóa nhật ký thao tác.'; return;
     }
 
