@@ -62,6 +62,11 @@ function mg_saoluu_pack_quote_identifier($name) {
     return $tick . str_replace($tick, $tick . $tick, $name) . $tick;
 }
 
+function mg_saoluu_pack_normalize_schema_sql($sql) {
+    $sql = preg_replace('/\\sAUTO_INCREMENT=\\d+\\b/i', '', (string) $sql);
+    return preg_replace('/\\s+/', ' ', trim((string) $sql));
+}
+
 function mg_saoluu_pack_schema_fingerprint($tables) {
     global $wpdb;
     if (!is_array($tables) || !$tables) return '';
@@ -73,8 +78,7 @@ function mg_saoluu_pack_schema_fingerprint($tables) {
         if (!is_array($row) || empty($row[1])) return new WP_Error('pack_schema_missing', 'Không đọc được schema bảng ' . $table . '.');
         // AUTO_INCREMENT=N is runtime data state, not structural schema. MySQL
         // may advance it after inserts even when columns/indexes are unchanged.
-        $create_sql = preg_replace('/\\sAUTO_INCREMENT=\\d+\\b/i', '', (string) $row[1]);
-        $items[(string) $table] = preg_replace('/\\s+/', ' ', trim((string) $create_sql));
+        $items[(string) $table] = mg_saoluu_pack_normalize_schema_sql((string) $row[1]);
     }
     ksort($items, SORT_STRING);
     return hash('sha256', wp_json_encode($items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
