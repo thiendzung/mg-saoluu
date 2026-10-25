@@ -80,9 +80,17 @@ function mg_saoluu_production_constant_enabled() {
     return defined('MG_SAOLUU_ALLOW_PRODUCTION_RESTORE') && MG_SAOLUU_ALLOW_PRODUCTION_RESTORE === true;
 }
 
+function mg_saoluu_audit_log_read() {
+    $private = mg_saoluu_private_state_read('audit-log.json');
+    if (is_wp_error($private) || !is_array($private)) $private = [];
+    $legacy = get_option('mg_saoluu_audit_log', []);
+    if (!is_array($legacy)) $legacy = [];
+    return array_slice(array_merge($private, $legacy), 0, 100);
+}
+
 function mg_saoluu_log_event($event, $message = '', $context = []) {
-    $logs = get_option('mg_saoluu_audit_log', []);
-    if (!is_array($logs)) $logs = [];
+    $logs = mg_saoluu_private_state_read('audit-log.json');
+    if (is_wp_error($logs) || !is_array($logs)) $logs = [];
     $user = wp_get_current_user();
     array_unshift($logs, [
         'time' => current_time('mysql'),
@@ -94,14 +102,19 @@ function mg_saoluu_log_event($event, $message = '', $context = []) {
         'user' => $user && $user->exists() ? $user->user_login : 'system',
         'context' => is_array($context) ? array_map('sanitize_text_field', $context) : [],
     ]);
-    update_option('mg_saoluu_audit_log', array_slice($logs, 0, 100), false);
+    return !is_wp_error(mg_saoluu_private_state_write('audit-log.json', array_slice($logs, 0, 100)));
+}
+
+function mg_saoluu_system_checks_cache_key() {
+    return 'system_checks_' . str_replace(['.', '-'], '_', MG_SAOLUU_VERSION);
 }
 
 function mg_saoluu_system_checks($force = false) {
     static $runtime = null;
+    $cache_key = mg_saoluu_system_checks_cache_key();
     if (!$force && is_array($runtime)) return $runtime;
     if (!$force) {
-        $cached = get_transient('mg_saoluu_system_checks');
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if (is_array($cached)) return $runtime = $cached;
     }
     $dir = mg_saoluu_get_backup_dir();
@@ -122,7 +135,7 @@ function mg_saoluu_system_checks($force = false) {
         'acf' => ['label' => 'ACF / dữ liệu tùy chỉnh', 'ok' => true, 'detail' => (function_exists('mg_saoluu_acf_available') && mg_saoluu_acf_available()) ? 'Đã nhận ACF' : 'ACF nằm ngoài phạm vi sao lưu lõi'],
         'multisite' => ['label' => 'WordPress Multisite', 'ok' => !is_multisite(), 'detail' => is_multisite() ? 'Chưa hỗ trợ Multisite' : 'Website đơn'],
     ];
-    set_transient('mg_saoluu_system_checks', $checks, 2 * MINUTE_IN_SECONDS);
+    wp_cache_set($cache_key, $checks, 'mg_saoluu', 2 * MINUTE_IN_SECONDS);
     return $runtime = $checks;
 }
 
