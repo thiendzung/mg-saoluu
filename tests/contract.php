@@ -176,6 +176,42 @@ $ordinary_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
 test('ordinary restore destination passes', $ordinary_copy === true && file_get_contents($restore_target_dir . '/ordinary.txt') === 'ordinary-content');
 @unlink($restore_target_dir . '/ordinary.txt');
 
+// Full Site Restore must mirror the backup snapshot, not merely copy on top.
+// Managed target files absent from the snapshot are pruned; explicit exclusions remain.
+$snapshot_stage = $root . '/snapshot-stage';
+wp_mkdir_p($snapshot_stage . '/wp-content/uploads');
+file_put_contents($snapshot_stage . '/wp-content/uploads/keep.txt', 'snapshot-keep');
+file_put_contents($restore_target_dir . '/keep.txt', 'target-drift');
+file_put_contents($restore_target_dir . '/introduced-before-restore.txt', 'must-be-pruned');
+file_put_contents(ABSPATH . 'wp-config.php', 'protected-config');
+$snapshot_extra = mg_saoluu_restore_snapshot_extra_files($snapshot_stage, 'safe_full');
+test('full restore detects managed files absent from snapshot',
+    is_array($snapshot_extra)
+    && in_array('wp-content/uploads/introduced-before-restore.txt', $snapshot_extra, true)
+    && !in_array('wp-content/uploads/keep.txt', $snapshot_extra, true)
+    && !in_array('wp-config.php', $snapshot_extra, true));
+$snapshot_prune = mg_saoluu_remove_new_restore_files($snapshot_extra, null, 'safe_full');
+test('full restore prunes file absent from snapshot and preserves exclusions',
+    $snapshot_prune['requested'] === 1
+    && $snapshot_prune['removed'] === 1
+    && $snapshot_prune['failed'] === 0
+    && !file_exists($restore_target_dir . '/introduced-before-restore.txt')
+    && file_get_contents($restore_target_dir . '/keep.txt') === 'target-drift'
+    && file_get_contents(ABSPATH . 'wp-config.php') === 'protected-config');
+$snapshot_remaining = mg_saoluu_restore_snapshot_extra_files($snapshot_stage, 'safe_full');
+test('snapshot prune leaves no managed extra files', is_array($snapshot_remaining) && $snapshot_remaining === []);
+@unlink($restore_target_dir . '/keep.txt');
+@unlink(ABSPATH . 'wp-config.php');
+
+$snapshot_link = $restore_target_dir . '/snapshot-extra-link.txt';
+symlink($outside_sentinel, $snapshot_link);
+$snapshot_link_scan = mg_saoluu_restore_snapshot_extra_files($snapshot_stage, 'safe_full');
+test('snapshot prune fails closed on managed target symlink',
+    is_wp_error($snapshot_link_scan)
+    && $snapshot_link_scan->get_error_code() === 'restore_snapshot_target_symlink'
+    && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($snapshot_link);
+
 // A full backup may contain an older MG Sao Luu copy, but restore must never
 // overwrite the plugin code currently executing the transaction.
 $self_runtime = dirname(MG_SAOLUU_FILE);
