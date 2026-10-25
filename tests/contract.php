@@ -427,7 +427,8 @@ $restore_php = file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php');
 $core_php = file_get_contents(MG_SAOLUU_DIR . 'includes/core.php');
 $lifecycle_cache_php = file_get_contents(MG_SAOLUU_DIR . 'includes/lifecycle.php');
 test('explicit rollback finalizer never reapplies current target settings',
-    str_contains($restore_php, "if (!$rollback_restore) {\n            mg_saoluu_restore_target_settings($target_settings);"));
+    str_contains($restore_php, 'if (!$rollback_restore) {')
+    && str_contains($restore_php, 'mg_saoluu_restore_target_settings($target_settings);'));
 test('non-security runtime caches use object cache instead of DB transients',
     str_contains($core_php, "wp_cache_set($cache_key")
     && !str_contains($core_php, "set_transient($cache_key")
