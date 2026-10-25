@@ -387,9 +387,30 @@ function mg_saoluu_acquire_lock() {
     return $token;
 }
 
+function &mg_saoluu_deferred_operation_locks() {
+    static $tokens = [];
+    return $tokens;
+}
+
+function mg_saoluu_defer_lock_release($token) {
+    $handles =& mg_saoluu_operation_lock_handles();
+    if (!is_string($token) || !isset($handles[$token])) return false;
+    $deferred =& mg_saoluu_deferred_operation_locks();
+    $deferred[$token] = true;
+    return true;
+}
+
 function mg_saoluu_release_lock($token) {
     $handles =& mg_saoluu_operation_lock_handles();
     if (!is_string($token) || !isset($handles[$token])) return;
+    $deferred =& mg_saoluu_deferred_operation_locks();
+    if (!empty($deferred[$token])) {
+        unset($deferred[$token]);
+        // Keep the handle referenced until PHP exits. The detached Pack worker
+        // blocks on the same flock and becomes DB writer only after every
+        // WordPress/native shutdown callback has finished.
+        return;
+    }
     $handle = $handles[$token];
     unset($handles[$token]);
     @flock($handle, LOCK_UN);
