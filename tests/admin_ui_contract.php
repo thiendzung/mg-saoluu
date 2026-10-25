@@ -78,4 +78,33 @@ ui_check('responsive CSS styles the two restore sources and upload box',
     && str_contains($css, '.mgsl-upload-box')
     && str_contains($css, '@media(max-width:900px)'));
 
+ui_check('restore upload boxes implement delegated drag and drop',
+    substr_count($render, 'data-mgsl-dropzone') >= 3
+    && str_contains($js, "document.addEventListener('dragover'")
+    && str_contains($js, "document.addEventListener('drop'")
+    && str_contains($js, 'new DataTransfer()')
+    && str_contains($js, 'field.dispatchEvent(new Event(\'change\''));
+
+ui_check('client upload validation checks extension and size',
+    str_contains($render, 'data-mgsl-extensions=".mgbackup"')
+    && substr_count($render, 'data-mgsl-extensions=".zip,.mgbackup"') >= 2
+    && str_contains($js, 'picked.size > limit')
+    && str_contains($js, 'wrongType')
+    && str_contains($js, 'allowed.some'));
+
+$verify_pos = strpos($actions, "if ($action === 'verify_restore_upload')");
+$restore_pos = strpos($actions, "if ($action === 'restore_zip_upload')");
+ui_check('Production-visible ZIP upload uses verify-only action before restore action',
+    str_contains($render, 'name="mg_action" value="verify_restore_upload"')
+    && str_contains($render, 'Production RC13 chỉ xác minh file')
+    && $verify_pos !== false && $restore_pos !== false && $verify_pos < $restore_pos
+    && str_contains($actions, 'mg_saoluu_verify_uploaded_backup_for_current_site($staged, $password)')
+    && str_contains($actions, '@unlink($staged)'));
+
+ui_check('uploaded backup verification is same-host fail-closed on Production',
+    str_contains($plugin ? src($plugin, 'includes/restore.php') : '', "mg_saoluu_environment() === 'production'")
+    && str_contains(src($plugin, 'includes/restore.php'), "'upload_verify_host'")
+    && str_contains(src($plugin, 'includes/restore.php'), "'upload_verify_prefix'")
+    && str_contains(src($plugin, 'includes/restore.php'), "'upload_verify_signature'"));
+
 echo "ADMIN UI TESTS $count/$count PASS\n";
