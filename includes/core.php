@@ -308,6 +308,56 @@ function mg_saoluu_read_metadata($file) {
 }
 
 /**
+ * Small operational state outside WordPress DB. Routine backup UI activity
+ * must not alter wp_options.
+ */
+function mg_saoluu_private_state_path($name) {
+    if (!in_array((string) $name, ['audit-log.json'], true)) return new WP_Error('private_state_name', 'Tên private state không hợp lệ.');
+    $safe = mg_saoluu_storage_preflight();
+    if (is_wp_error($safe)) return $safe;
+    $path = trailingslashit(mg_saoluu_get_backup_dir()) . $name;
+    if (is_link($path) || (file_exists($path) && !is_file($path))) return new WP_Error('private_state_unsafe', 'Private state path không an toàn.');
+    return $path;
+}
+
+function mg_saoluu_private_state_read($name) {
+    $path = mg_saoluu_private_state_path($name);
+    if (is_wp_error($path)) return $path;
+    if (!file_exists($path)) return [];
+    return mg_saoluu_read_metadata($path);
+}
+
+function mg_saoluu_private_state_write($name, $data) {
+    $path = mg_saoluu_private_state_path($name);
+    if (is_wp_error($path)) return $path;
+    if (!is_array($data)) return new WP_Error('private_state_invalid', 'Private state phải là mảng.');
+    $json = wp_json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    if (!is_string($json)) return new WP_Error('private_state_json', 'Không mã hóa được private state.');
+    try { $suffix = bin2hex(random_bytes(8)); }
+    catch (Throwable $e) { return new WP_Error('private_state_temp', 'Không tạo được file tạm private state.'); }
+    $temp = dirname($path) . '/.mg-state-' . $suffix . '.tmp';
+    $handle = @fopen($temp, 'xb');
+    if (!$handle) return new WP_Error('private_state_temp', 'Không tạo được file tạm private state.');
+    @chmod($temp, 0600);
+    $ok = mg_saoluu_write_all($handle, $json) && @fflush($handle);
+    fclose($handle);
+    if (!$ok || !@rename($temp, $path)) {
+        @unlink($temp);
+        return new WP_Error('private_state_write', 'Không ghi được private state.');
+    }
+    @chmod($path, 0600);
+    return true;
+}
+
+function mg_saoluu_private_state_delete($name) {
+    $path = mg_saoluu_private_state_path($name);
+    if (is_wp_error($path)) return $path;
+    if (!file_exists($path)) return true;
+    if (!is_file($path) || is_link($path)) return new WP_Error('private_state_unsafe', 'Private state không thể xóa an toàn.');
+    return @unlink($path) ? true : new WP_Error('private_state_delete', 'Không xóa được private state.');
+}
+
+/**
  * Atomic, non-blocking operation lock across PHP-FPM/cron workers.
  * Uses a private filesystem lock rather than a transient get/set race.
  * The handle must remain open until release. No polling or sleep.
