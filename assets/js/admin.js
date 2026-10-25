@@ -92,7 +92,10 @@
     // Real feedback for synchronous POST requests; no invented percentages or polling.
     var operations = {
         backup: 'Đang sao lưu và kiểm tra…',
+        pack_backup: 'Đang tạo Pack mã hóa…',
         verify_backup: 'Đang xác minh…',
+        pack_restore: 'Đang xác minh Pack và chuẩn bị Restore…',
+        pack_restore_upload: 'Đang upload, xác minh Pack và chuẩn bị Restore…',
         restore_saved: 'Đang khôi phục bản đang lưu…',
         restore_zip_upload: 'Đang tải file lên và khôi phục…',
         restore_sql_upload: 'Đang nhập SQL…'
