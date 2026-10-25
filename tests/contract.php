@@ -66,7 +66,7 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.3.0-rc7');
+define('MG_SAOLUU_VERSION', '1.3.0-rc8');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
@@ -97,7 +97,7 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('RC7 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc7');
+test('RC8 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc8');
 test('self-integrity cache does not create DB transient',
     !array_filter(array_keys($GLOBALS['test_transients']), static fn($k)=>str_contains((string)$k,'self_integrity')));
 
@@ -586,9 +586,9 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// RC7 deliberately keeps every Production Restore path hard-blocked while Pack
+// RC8 deliberately keeps every Production Restore path hard-blocked while Pack
 // behavior is being accepted on an isolated clone/staging target.
-test('RC7 keeps production restore hard-block active',
+test('RC8 keeps production restore hard-block active',
     str_contains(MG_SAOLUU_VERSION, '-rc'));
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 
