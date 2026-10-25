@@ -81,6 +81,18 @@ function mgw_state_hash($path, $pack = '') {
     $h = @fopen($path, 'rb');
     if (!$h) return '';
     $ctx = hash_init('sha256');
+    if ($pack === 'settings') {
+        $rows = [];
+        while (($line = fgets($h)) !== false) {
+            $line = mgw_state_hash_line($line, $pack);
+            if (strpos($line, 'REPLACE INTO `') === 0) $rows[] = $line;
+        }
+        fclose($h);
+        if (!$rows) return '';
+        sort($rows, SORT_STRING);
+        foreach ($rows as $line) hash_update($ctx, $line);
+        return hash_final($ctx);
+    }
     while (($line = fgets($h)) !== false) {
         hash_update($ctx, mgw_state_hash_line($line, $pack));
     }
