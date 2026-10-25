@@ -90,7 +90,6 @@ function mg_saoluu_log_event($event, $message = '', $context = []) {
         'time' => current_time('mysql'),
         'event' => sanitize_key($event),
         'message' => sanitize_text_field($message),
-        'environment' => mg_saoluu_environment(),
         'host' => mg_saoluu_host(),
         'user_id' => (int) get_current_user_id(),
         'user' => $user && $user->exists() ? $user->user_login : 'system',
