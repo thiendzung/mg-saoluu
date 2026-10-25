@@ -52,7 +52,11 @@ function mg_saoluu_pack_tables($pack) {
 }
 
 function mg_saoluu_pack_settings_scope() {
-    return 'exclude_transients_runtime_v2';
+    return 'exclude_transients_runtime_v3';
+}
+
+function mg_saoluu_pack_settings_hash_algorithm() {
+    return 'sha256-settings-logical-row-v1';
 }
 
 function mg_saoluu_pack_settings_predicate() {
@@ -133,17 +137,35 @@ function mg_saoluu_pack_dump_options($pack, $binary) {
         $options[] = '--no-tablespaces';
         $options[] = '--set-gtid-purged=OFF';
     }
-    if ($pack === 'settings') $options[] = '--where=' . mg_saoluu_pack_settings_predicate();
+    if ($pack === 'settings') {
+        $options[] = '--skip-extended-insert';
+        $options[] = '--where=' . mg_saoluu_pack_settings_predicate();
+    }
     return $options;
 }
 
-function mg_saoluu_pack_state_hash_file($path) {
+function mg_saoluu_pack_state_hash_line($line, $pack = '') {
+    $line = preg_replace('/\\sAUTO_INCREMENT=\\d+\\b/i', '', (string) $line);
+    if ($pack === 'settings') {
+        // wp_options.option_id is a physical surrogate key, not Settings meaning.
+        // With --skip-extended-insert each dump row is one REPLACE statement,
+        // so normalize only the first numeric value while retaining
+        // option_name, option_value and autoload byte-for-byte.
+        $line = preg_replace(
+            '/^(REPLACE INTO `[^`]+` VALUES \\()\\d+(,)/',
+            '$1<OPTION_ID>$2',
+            $line
+        );
+    }
+    return $line;
+}
+
+function mg_saoluu_pack_state_hash_file($path, $pack = '') {
     $h = @fopen($path, 'rb');
     if (!$h) return '';
     $ctx = hash_init('sha256');
     while (($line = fgets($h)) !== false) {
-        $line = preg_replace('/\\sAUTO_INCREMENT=\\d+\\b/i', '', $line);
-        hash_update($ctx, $line);
+        hash_update($ctx, mg_saoluu_pack_state_hash_line($line, $pack));
     }
     fclose($h);
     return hash_final($ctx);
@@ -180,7 +202,7 @@ function mg_saoluu_pack_run_dump($pack, $output, $tables = null) {
     }
     @unlink($error_file);
     @chmod($output, 0600);
-    $state_hash = mg_saoluu_pack_state_hash_file($output);
+    $state_hash = mg_saoluu_pack_state_hash_file($output, $pack);
     if ($state_hash === '') { @unlink($output); return new WP_Error('pack_state_hash', 'Không fingerprint được trạng thái Pack.'); }
     return ['state_hash' => $state_hash, 'dump_options' => $options];
 }
@@ -467,7 +489,7 @@ function mg_saoluu_create_pack_backup($pack, $note = '', $password = '', $apply_
         'sql_size' => (int) filesize($sql_file),
         'state_hash' => $state_hash,
         'state_hash_algorithm' => $pack === 'settings'
-            ? 'sha256-mysqldump-order-by-primary-settings-stable-v2'
+            ? mg_saoluu_pack_settings_hash_algorithm()
             : 'sha256-mysqldump-order-by-primary-v1',
         'note' => sanitize_text_field($note),
         'created_at' => gmdate('c'),
@@ -671,7 +693,7 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
         return new WP_Error('pack_cli_missing', 'Pack Restore cần mysql và mysqldump/mariadb-dump CLI.');
     }
     if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-        return new WP_Error('rc_production_restore_disabled', 'RC11 chỉ test Pack Restore trên clone/staging.');
+        return new WP_Error('rc_production_restore_disabled', 'RC12 chỉ test Pack Restore trên clone/staging.');
     }
 
     $prepared = mg_saoluu_pack_prepare_zip($backup_file, $password);
@@ -693,12 +715,16 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
         @unlink($prepared['zip']);
         return new WP_Error('pack_prefix_mismatch', 'DB prefix của Pack không khớp site hiện tại.');
     }
-    if ($pack === 'settings' && (string) ($manifest['settings_scope'] ?? '') !== mg_saoluu_pack_settings_scope()) {
-        @unlink($prepared['zip']);
-        return new WP_Error(
-            'pack_settings_scope_mismatch',
-            'Pack Settings dùng scope runtime cũ. Hãy tạo Pack Settings mới bằng RC11 trước khi Restore.'
-        );
+    if ($pack === 'settings') {
+        $settings_scope_ok = (string) ($manifest['settings_scope'] ?? '') === mg_saoluu_pack_settings_scope();
+        $settings_hash_ok = (string) ($manifest['state_hash_algorithm'] ?? '') === mg_saoluu_pack_settings_hash_algorithm();
+        if (!$settings_scope_ok || !$settings_hash_ok) {
+            @unlink($prepared['zip']);
+            return new WP_Error(
+                'pack_settings_scope_mismatch',
+                'Pack Settings dùng fingerprint cũ. Hãy tạo Pack Settings mới bằng RC12 trước khi Restore.'
+            );
+        }
     }
 
     if ($pack !== 'full_db') {
