@@ -260,20 +260,20 @@ function mg_saoluu_backup_cache_key() {
 }
 
 function mg_saoluu_invalidate_backup_cache() {
-    if (function_exists('mg_saoluu_get_backup_dir')) delete_transient(mg_saoluu_backup_cache_key());
+    if (function_exists('mg_saoluu_get_backup_dir')) wp_cache_delete(mg_saoluu_backup_cache_key(), 'mg_saoluu');
 }
 
 function mg_saoluu_list_backup_files($force = false) {
     $cache_key = mg_saoluu_backup_cache_key();
     if (!$force) {
-        $cached = get_transient($cache_key);
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if (is_array($cached)) return $cached;
     }
     $dir = mg_saoluu_get_backup_dir();
     $files = array_merge((array) glob($dir . 'backup_*.zip'), (array) glob($dir . 'backup_*.mgbackup'));
     $files = array_values(array_filter(array_unique($files), 'is_file'));
     usort($files, function($a, $b){ return filemtime($b) <=> filemtime($a); });
-    set_transient($cache_key, $files, 20);
+    wp_cache_set($cache_key, $files, 'mg_saoluu', 20);
     return $files;
 }
 
