@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.3.0-rc11 — RC10 UX + focused Pack remediation
+# MG Sao Lưu v1.3.0-rc12 — logical Settings Pack verification
 
 WordPress Backup → Verify → Store → Restore. Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 
@@ -57,3 +57,7 @@ RC10 giữ nguyên worker/state-hash/rollback đã PASS ở RC9. Thay đổi ch�
 
 ## RC11: focused remediation
 Settings Pack excludes volatile WordPress runtime rows (`cron`, `rewrite_rules`, updater locks) from both backup and post-verify scope so local-upload Restore can compare durable settings deterministically. Oversized local files now immediately show a warning and disable the Restore submit button; server-side limits remain authoritative.
+
+
+## RC12: logical Settings hash
+Settings Pack post-verify now hashes durable option rows by logical content (`option_name`, `option_value`, `autoload`) rather than physical `option_id` or primary-key row order. The dump uses one row per statement for deterministic normalization. Fresh RC12 Settings Packs are required for Restore; RC11 Pack fingerprints are intentionally rejected. The RC11 oversized upload gate remains unchanged.
