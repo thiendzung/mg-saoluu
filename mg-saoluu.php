@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MG Sao Lưu & Khôi Phục An Toàn
  * Description: Sao lưu, xác minh, lưu ngoài hosting và khôi phục WordPress có kiểm soát.
- * Version: 1.3.0-rc13
+ * Version: 1.3.0
  * Requires at least: 7.1
  * Requires PHP: 8.3
  * Update URI: https://github.com/thiendzung/mg-saoluu
@@ -10,12 +10,13 @@
  * License: GPL2
  */
 if (!defined('ABSPATH')) { exit; }
-if (!defined('MG_SAOLUU_VERSION')) define('MG_SAOLUU_VERSION', '1.3.0-rc13');
+if (!defined('MG_SAOLUU_VERSION')) define('MG_SAOLUU_VERSION', '1.3.0');
 if (!defined('MG_SAOLUU_DATA_VERSION')) define('MG_SAOLUU_DATA_VERSION', '5'); // No destructive migration from RC1.
 if (!defined('MG_SAOLUU_MAX_SQL_UPLOAD')) define('MG_SAOLUU_MAX_SQL_UPLOAD', 300 * 1024 * 1024);
 if (!defined('MG_SAOLUU_MAX_ZIP_UNCOMPRESSED')) define('MG_SAOLUU_MAX_ZIP_UNCOMPRESSED', 8 * 1024 * 1024 * 1024);
 if (!defined('MG_SAOLUU_MAX_ZIP_RATIO')) define('MG_SAOLUU_MAX_ZIP_RATIO', 250);
 if (!defined('MG_SAOLUU_ENCRYPT_CHUNK')) define('MG_SAOLUU_ENCRYPT_CHUNK', 4 * 1024 * 1024);
+if (!defined('MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE')) define('MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE', true);
 
 define('MG_SAOLUU_FILE', __FILE__);
 define('MG_SAOLUU_DIR', plugin_dir_path(__FILE__));
