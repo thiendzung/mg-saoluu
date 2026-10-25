@@ -409,6 +409,25 @@
     background:#f6fbff;
     box-shadow:0 0 0 1px rgba(34,113,177,.08);
 }
+.mgsl-upload-box.is-dragging {
+    border-color:#2271b1;
+    background:#eef6ff;
+    box-shadow:0 0 0 2px rgba(34,113,177,.14);
+}
+.mgsl-upload-box.has-file {
+    border-style:solid;
+    border-color:#00a32a;
+    background:#f4fbf5;
+}
+.mgsl-upload-name {
+    display:block;
+    max-width:100%;
+    margin-top:3px;
+    font-size:12px;
+    font-weight:600;
+    color:#50575e;
+    overflow-wrap:anywhere;
+}
 .mgsl-upload-box .dashicons {
     width:28px;
     height:28px;
