@@ -9,7 +9,7 @@ function mg_saoluu_purge_device_identity_if_nonlocal() {
 
 register_activation_hook(MG_SAOLUU_FILE, 'mg_saoluu_activate');
 function mg_saoluu_activate() {
-    add_option('mg_saoluu_setup_complete', '0', '', false);
+    add_option('mg_saoluu_setup_complete', '1', '', false);
     update_option('mg_saoluu_installed_version', MG_SAOLUU_VERSION, false);
     add_option('mg_saoluu_block_emails', '1', '', false);
     add_option('mg_saoluu_force_noindex', '1', '', false);
@@ -19,8 +19,7 @@ function mg_saoluu_activate() {
     add_option('mg_saoluu_drive_auto_upload', '0', '', false);
     update_option('mg_saoluu_data_version', MG_SAOLUU_DATA_VERSION, false);
     if (function_exists('mg_saoluu_managed_encryption_key')) mg_saoluu_managed_encryption_key(true);
-    mg_saoluu_purge_device_identity_if_nonlocal();
-    set_transient('mg_saoluu_activation_redirect', 1, 60);
+    update_option('mg_saoluu_setup_complete', '1', false);
     mg_saoluu_reschedule_cron();
 }
 
@@ -38,33 +37,18 @@ add_action('admin_init', 'mg_saoluu_maybe_upgrade', 1);
 function mg_saoluu_maybe_upgrade() {
     $installed = (string) get_option('mg_saoluu_installed_version', '');
     if ($installed === MG_SAOLUU_VERSION) return;
-    // A new build must never inherit a Production Restore authorization window.
+    // v1.3.1 has one environment-neutral Backup/Restore flow.
+    // Old signer/environment state is ignored by the active flow.
     delete_transient('mg_saoluu_production_restore_unlocked');
-    $looks_existing = get_option('mg_saoluu_environment', null) !== null;
-    // Bản vá và nâng cấp nhỏ giữ nguyên thiết lập đã hoàn tất.
-    // Chỉ cài mới mới cần chạy trình thiết lập ban đầu.
-    if ($installed === '' && !$looks_existing) {
-        update_option('mg_saoluu_setup_complete', '0', false);
-        set_transient('mg_saoluu_activation_redirect', 1, 60);
-    }
+    update_option('mg_saoluu_setup_complete', '1', false);
     update_option('mg_saoluu_installed_version', MG_SAOLUU_VERSION, false);
     update_option('mg_saoluu_data_version', MG_SAOLUU_DATA_VERSION, false);
     add_option('mg_saoluu_encrypt_default', '1', '', false);
     add_option('mg_saoluu_drive_auto_upload', '0', '', false);
     if (function_exists('mg_saoluu_managed_encryption_key')) mg_saoluu_managed_encryption_key(true);
-    if (function_exists('mg_saoluu_security_ensure_device_key') && mg_saoluu_environment() === 'local' && mg_saoluu_security_sodium_available()) mg_saoluu_security_ensure_device_key(false);
-    mg_saoluu_purge_device_identity_if_nonlocal();
 }
 
 
-add_action('admin_init', 'mg_saoluu_activation_redirect', 2);
-function mg_saoluu_activation_redirect() {
-    if (!get_transient('mg_saoluu_activation_redirect')) return;
-    delete_transient('mg_saoluu_activation_redirect');
-    if (!current_user_can('manage_options') || wp_doing_ajax() || is_network_admin()) return;
-    wp_safe_redirect(admin_url('admin.php?page=mg-saoluu-tools&setup=1&step=1'));
-    exit;
-}
 
 function mg_saoluu_setup_complete() {
     return get_option('mg_saoluu_setup_complete', '0') === '1';
