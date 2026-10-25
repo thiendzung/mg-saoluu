@@ -4,9 +4,9 @@ if (!defined('ABSPATH')) { exit; }
 function mg_saoluu_integrity_file() { return MG_SAOLUU_DIR . 'integrity.json'; }
 
 function mg_saoluu_self_integrity($force = false) {
-    $cache_key = 'mg_saoluu_self_integrity_' . str_replace('.', '_', MG_SAOLUU_VERSION);
+    $cache_key = 'self_integrity_' . str_replace(['.', '-'], '_', MG_SAOLUU_VERSION);
     if (!$force) {
-        $cached = get_transient($cache_key);
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if (is_array($cached)) return $cached;
     }
     $required = [
@@ -46,7 +46,7 @@ function mg_saoluu_self_integrity($force = false) {
         $path = MG_SAOLUU_DIR . $relative;
         $result['assets'][$relative] = ['exists' => is_file($path), 'readable' => is_readable($path), 'size' => is_file($path) ? (int) filesize($path) : 0];
     }
-    set_transient($cache_key, $result, 5 * MINUTE_IN_SECONDS);
+    wp_cache_set($cache_key, $result, 'mg_saoluu', 5 * MINUTE_IN_SECONDS);
     return $result;
 }
 
