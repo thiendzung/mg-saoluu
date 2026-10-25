@@ -1,12 +1,12 @@
 {
   "format": "mg-saoluu-integrity",
   "version": 1,
-  "plugin_version": "1.3.0-rc8",
+  "plugin_version": "1.3.0-rc9",
   "generated_at": "2026-10-25T00:00:00+00:00",
   "files": {
     ".htaccess": "8a140e242a320239d8217be279f4ee83a7157f45c3b9df5f121e868997af81ef",
-    "CHANGELOG.md": "5ad9b67ae71ba5d1581f4662d4f8cd79308947c8fc8f49cc04f8ee29bfd26c1d",
-    "README.md": "260ca6ea192c8db3e3f50a2c7461f3e6c4227e00a2341302637e6ce4cfb1c96e",
+    "CHANGELOG.md": "86fea958c0472ef99b48648eb8e36131ac734e32669d0a3cb7f775f8b3495835",
+    "README.md": "d0450a8e7b2b1956597160ec88fc364901366e9210be084f567740cbdeec0f42",
     "RECOVERY_RUNBOOK.md": "b6b1952d2efb6ab0c8e21e5a9af50cfabd80388d16018a8e09a7d0c1fb444ce7",
     "admin/actions.php": "16f39a030113afafb84145dce13081a3dca8c67bd0860eef6683a4a30bf7749b",
     "admin/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
@@ -26,13 +26,13 @@
     "includes/restore.php": "ee36518358ef2e7ec18728ab84ac4c8e7e6e34dde21f5c29eaee9a23021be6b8",
     "includes/security.php": "efc11180240724c17d9068b6c10ee0f2527c2af9c831b7b550fc41abe3566262",
     "index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
-    "mg-saoluu.php": "3131e4041a3242f315eb40aed1901cdf790b3bd2fed25a00de40e1cc8405f76e",
-    "readme.txt": "ac56b5d43935067351fcdcb7292e4143c2776c1f9fba8245ce901bcd6039ea1e",
+    "mg-saoluu.php": "1c7eccd0afc23f94365a9b8da245ab8777e2028bf5a627faa3a53a0693307d63",
+    "readme.txt": "d70afaa1306a247776deb3c373dbdf9b988655186dc25fd67a5188abf3d7a785",
     "tools/recovery-verify.php": "69c3a6340616210aaffdfd5deec941c51d3f649d4f8ec3413f016506d9b934da",
     "uninstall.php": "cef8058aeeb6d808286f5b50cb7a7b887597114e37ddfc64ecf7590082ff2e51",
     "includes/diagnostics.php": "6e3960c4a4eba796df808d4e6653d3dec60c7ecaaf70ee8f21602429d3c17e44",
     "includes/schedule-health.php": "c5f368bf3e5c71a7506d15ebb6f0c60d7dcf20582bb27b73b6399488588d3f7f",
-    "includes/packs.php": "1e2ff26f1b695c0e375a5a625be6433800e6996e3a8910c00ee4cd314f361372",
-    "bin/pack-restore-worker.php": "63b19562645224757ca74ea4bf0666511e09cdfcf6f2ad76b0933c300c913c2d"
+    "includes/packs.php": "029b497c699ff0d323efe27b1ef2146bf7fd4b9e87008d4a39e97c7969fa789b",
+    "bin/pack-restore-worker.php": "b04d6d5cf4fb603f20bfd9bdfb11eb0fbcc27c120cf6334c06da3c63f955fb18"
   }
 }
