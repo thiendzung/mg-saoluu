@@ -444,8 +444,9 @@ function mg_saoluu_render_page() {
                                 <input type="file" name="pack_file" accept=".mgbackup,application/octet-stream" data-mgsl-max-upload="<?php echo esc_attr((string) $pack_upload_limit); ?>" required>
                             </label>
                             <div class="mgsl-field"><label>Recovery Key / mật khẩu riêng</label><input type="password" name="backup_password" autocomplete="current-password" placeholder="Để trống nếu dùng Recovery Key mặc định"></div>
+                            <p class="mgsl-note mgsl-danger" data-mgsl-upload-warning hidden></p>
                             <p><label><input type="checkbox" name="pack_restore_confirm" value="1" required> Tôi hiểu dữ liệu trong đúng scope của Pack sẽ được thay thế</label></p>
-                            <button class="button button-primary" <?php disabled(empty($self_integrity['ok']) || $env==='production' || $pack_upload_limit < 1); ?>>Upload, xác minh & khôi phục</button>
+                            <button type="submit" class="button button-primary" <?php disabled(empty($self_integrity['ok']) || $env==='production' || $pack_upload_limit < 1); ?>>Upload, xác minh & khôi phục</button>
                         </form>
                     </div>
                 </div>
