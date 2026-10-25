@@ -178,7 +178,6 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
         'note' => $note ?: 'Không có ghi chú',
         'time' => current_time('mysql'),
         'type' => $type,
-        'source_environment' => mg_saoluu_environment(),
         'source_url' => home_url('/'),
         'size' => filesize($final_path),
         'encrypted' => $encrypt ? 1 : 0,
