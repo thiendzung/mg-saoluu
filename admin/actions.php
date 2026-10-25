@@ -5,7 +5,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     if (!current_user_can('manage_options')) wp_die('Bạn không có quyền thực hiện.');
     check_admin_referer('mg_saoluu_secure', 'mg_nonce');
     $action = sanitize_key(wp_unslash($_POST['mg_action']));
-    if (in_array($action,['backup','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
+    if (in_array($action,['backup','pack_backup','pack_restore','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
 
     // v1.2.1 concentrates on BACKUP/RESTORE. Existing transfer and deploy
     // implementation/options remain on disk for a future migration, but no
@@ -374,6 +374,59 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     $lock = mg_saoluu_acquire_lock();
     if (is_wp_error($lock)) { $status = 'error'; $message = $lock->get_error_message(); return; }
     try {
+        if ($action === 'pack_backup') {
+            $pack = sanitize_key(wp_unslash($_POST['pack'] ?? 'settings'));
+            $note = sanitize_text_field(wp_unslash($_POST['backup_note'] ?? ''));
+            $password = (string) wp_unslash($_POST['backup_password'] ?? '');
+            $confirm = (string) wp_unslash($_POST['backup_password_confirm'] ?? '');
+            if ($password !== '' && $password !== $confirm) {
+                $status='error'; $message='Hai lần nhập mật khẩu không giống nhau.'; return;
+            }
+            $result = mg_saoluu_create_pack_backup($pack, $note, $password, true);
+            if (is_wp_error($result)) {
+                $status='error'; $message=$result->get_error_message();
+            } else {
+                mg_saoluu_log_event('pack_backup', 'Tạo Pack backup', ['file'=>$result,'pack'=>$pack]);
+                $status='success';
+                $message='Đã tạo Pack mã hóa: ' . $result . '.';
+            }
+            return;
+        }
+
+        if ($action === 'pack_restore') {
+            if (!isset($_POST['pack_restore_confirm'])) {
+                $status='error'; $message='Hãy xác nhận phục hồi đúng Pack đã chọn.'; return;
+            }
+            $self = mg_saoluu_self_integrity();
+            if (empty($self['ok'])) {
+                $status='error'; $message='Đã khóa Pack Restore vì integrity plugin không đạt.'; return;
+            }
+            $name = basename(sanitize_file_name(wp_unslash($_POST['file_name'] ?? '')));
+            if (!mg_saoluu_is_backup_filename($name)) {
+                $status='error'; $message='Tên Pack không hợp lệ.'; return;
+            }
+            $metadata = mg_saoluu_read_metadata(mg_saoluu_get_backup_dir() . 'metadata.json');
+            if (($metadata[$name]['type'] ?? '') !== 'pack') {
+                $status='error'; $message='File đã chọn không phải Pack v2.'; return;
+            }
+            $path = mg_saoluu_get_backup_dir() . $name;
+            $password = (string) wp_unslash($_POST['backup_password'] ?? '');
+            if ($password === '' && mg_saoluu_encryption_constant_available()) $password = (string) MG_SAOLUU_ENCRYPTION_KEY;
+            if ($password === '') $password = mg_saoluu_managed_encryption_key(false);
+            if ($password === '') {
+                $status='error'; $message='Không có Recovery Key để mở Pack.'; return;
+            }
+            $result = mg_saoluu_restore_pack($path, $password);
+            if (is_wp_error($result)) {
+                $status='error'; $message=$result->get_error_message();
+            } else {
+                mg_saoluu_log_event('pack_restore', 'Khôi phục Pack', ['file'=>$name,'pack'=>$result['pack'] ?? '']);
+                $status='success';
+                $message='Khôi phục Pack thành công. Checkpoint cùng Pack: ' . ($result['checkpoint'] ?? '');
+            }
+            return;
+        }
+
         if ($action === 'backup') {
             $type = sanitize_key(wp_unslash($_POST['backup_type'] ?? 'sql'));
             $note = sanitize_text_field(wp_unslash($_POST['backup_note'] ?? ''));
