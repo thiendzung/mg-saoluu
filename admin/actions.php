@@ -288,9 +288,13 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         if (is_wp_error($result)) { $status = 'error'; $message = 'Không xác minh được: ' . $result->get_error_message(); }
         else {
             $status = 'success';
-            $message = $result['state'] === 'verified'
-                ? 'Đã đối chiếu SHA-256, nội dung ZIP và chữ ký của website hiện tại. CHƯA thử khôi phục.'
-                : 'Nội dung ZIP khớp nhưng không xác thực được chữ ký nguồn bằng khóa hiện tại. CHƯA thử khôi phục.';
+            if (!empty($result['authenticated_encryption'])) {
+                $message = 'Pack v2 PASS: SHA-256 file, XChaCha20-Poly1305, giải nén và checksum pack.sql đều khớp. CHƯA thử khôi phục.';
+            } else {
+                $message = $result['state'] === 'verified'
+                    ? 'Đã đối chiếu SHA-256, nội dung ZIP và chữ ký của website hiện tại. CHƯA thử khôi phục.'
+                    : 'Nội dung ZIP khớp nhưng không xác thực được chữ ký nguồn bằng khóa hiện tại. CHƯA thử khôi phục.';
+            }
             mg_saoluu_log_event('backup_verified', $message, ['file' => $name, 'state' => $result['state']]);
         }
         return;
