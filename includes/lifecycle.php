@@ -80,6 +80,14 @@ function mg_saoluu_production_constant_enabled() {
     return defined('MG_SAOLUU_ALLOW_PRODUCTION_RESTORE') && MG_SAOLUU_ALLOW_PRODUCTION_RESTORE === true;
 }
 
+/** Explicit stable-build capability gate; version text alone must never unlock Production Restore. */
+function mg_saoluu_production_full_restore_enabled() {
+    return defined('MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE')
+        && MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE === true
+        && defined('MG_SAOLUU_VERSION')
+        && strpos(MG_SAOLUU_VERSION, '-rc') === false;
+}
+
 function mg_saoluu_audit_log_read() {
     $private = mg_saoluu_private_state_read('audit-log.json');
     if (is_wp_error($private) || !is_array($private)) $private = [];
