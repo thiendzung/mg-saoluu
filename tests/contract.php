@@ -1,5 +1,5 @@
 <?php
-/** Standalone narrow regression harness for MG Sao Luu 1.3.0-rc5, no WordPress or live database. */
+/** Standalone narrow regression harness for MG Sao Luu 1.3.0-rc6, no WordPress or live database. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 $root = sys_get_temp_dir() . '/mgsl-v12-' . bin2hex(random_bytes(4));
 mkdir($root . '/public_html/wp-content', 0700, true);
@@ -17,6 +17,7 @@ if (in_array('--unsafe-config', $argv ?? [], true)) define('MG_SAOLUU_BACKUP_DIR
 $_SERVER['DOCUMENT_ROOT'] = ABSPATH;
 $GLOBALS['test_options'] = [];
 $GLOBALS['test_transients'] = [];
+$GLOBALS['test_object_cache'] = [];
 $GLOBALS['test_count'] = 0;
 $GLOBALS['test_environment'] = 'local';
 $GLOBALS['test_restore_unlock'] = [];
@@ -39,6 +40,10 @@ function update_option($key,$value,$autoload=false) {$GLOBALS['test_options'][$k
 function get_transient($key) {return $GLOBALS['test_transients'][$key]??false;}
 function set_transient($key,$value,$ttl=0) {$GLOBALS['test_transients'][$key]=$value;return true;}
 function delete_transient($key){unset($GLOBALS['test_transients'][$key]);}
+function wp_cache_get($key,$group='default'){return $GLOBALS['test_object_cache'][$group][$key]??false;}
+function wp_cache_set($key,$value,$group='default',$expire=0){$GLOBALS['test_object_cache'][$group][$key]=$value;return true;}
+function wp_cache_delete($key,$group='default'){unset($GLOBALS['test_object_cache'][$group][$key]);return true;}
+function wp_cache_flush(){$GLOBALS['test_object_cache']=[];return true;}
 function wp_json_encode($v,$options=0){return json_encode($v,$options);}
 function size_format($bytes){return (string) $bytes;}
 function current_time($type='mysql'){return '2026-10-24 12:00:00';}
@@ -62,7 +67,7 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.3.0-rc5');
+define('MG_SAOLUU_VERSION', '1.3.0-rc6');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
@@ -93,7 +98,7 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('RC5 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc5');
+test('RC6 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc6');
 
 // Stable production restore still requires the signed temporary unlock plus the
 // explicit confirmation phrase. Version promotion must not bypass this gate.
@@ -110,6 +115,27 @@ test('production confirmation layer still requires active unlock and exact phras
     mg_saoluu_check_restore_confirmation('RESTORE MOTGU.COM', true)===true);
 $GLOBALS['test_restore_unlock']=[];
 $GLOBALS['test_environment']='local';
+
+class FixtureRawOptionsDB {
+    public string $options='wp_options';
+    public function prepare($sql, ...$args){return $sql;}
+    public function get_var($sql){return str_contains($sql, 'blog_public') ? '1' : null;}
+}
+$GLOBALS['wpdb']=new FixtureRawOptionsDB();
+$GLOBALS['test_options']['blog_public']='0';
+$captured_settings=mg_saoluu_capture_target_settings();
+test('target settings capture raw blog_public instead of filtered value',
+    ($captured_settings['blog_public']??null)==='1');
+$GLOBALS['test_transients']['mg_saoluu_production_restore_unlocked']=['active'=>true];
+mg_saoluu_restore_target_settings([
+    'options'=>[],
+    'blog_public'=>'1',
+    'target_environment'=>'staging',
+]);
+test('target settings restore exact blog_public and leaves unlock transient untouched',
+    ($GLOBALS['test_options']['blog_public']??null)==='1'
+    && isset($GLOBALS['test_transients']['mg_saoluu_production_restore_unlocked']));
+unset($GLOBALS['wpdb']);
 
 // Storage isolation: multiple filesystem paths including symlinks.
 $external=mg_saoluu_get_backup_dir();
@@ -394,6 +420,16 @@ test('audit log writes private state instead of wp_options',
     && !str_contains($lifecycle_php, "update_option('mg_saoluu_audit_log'"));
 test('security UI reads private plus legacy audit history',
     str_contains($render_php, 'mg_saoluu_audit_log_read()'));
+$restore_php = file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php');
+$core_php = file_get_contents(MG_SAOLUU_DIR . 'includes/core.php');
+$lifecycle_cache_php = file_get_contents(MG_SAOLUU_DIR . 'includes/lifecycle.php');
+test('explicit rollback finalizer never reapplies current target settings',
+    str_contains($restore_php, "if (!$rollback_restore) {\n            mg_saoluu_restore_target_settings($target_settings);"));
+test('non-security runtime caches use object cache instead of DB transients',
+    str_contains($core_php, "wp_cache_set($cache_key")
+    && !str_contains($core_php, "set_transient($cache_key")
+    && str_contains($lifecycle_cache_php, "wp_cache_set($cache_key")
+    && !str_contains($lifecycle_cache_php, "set_transient($cache_key"));
 test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
 test('debug file outside webroot',mg_saoluu_storage_path_safe(mg_saoluu_debug_file()));
 test('debug log excludes password',!str_contains(file_get_contents(mg_saoluu_debug_file()),'secret'));
@@ -630,7 +666,7 @@ $unknown=mg_saoluu_backup_prefix_preflight([],'wp_',true);
 test('legacy cross-site unknown prefix blocked',is_wp_error($unknown)&&$unknown->get_error_code()==='backup_prefix_unknown');
 test('legacy same-site prefix still allowed',mg_saoluu_backup_prefix_preflight([],'wp_',false)===true);
 
-// Stable backend safety and honest archive statuses retained in RC5.
+// Stable backend safety and honest archive statuses retained in RC6.
 test('catalog requires actual restore-drill proof', !mg_saoluu_catalog_has_recovery_proof([
  'type'=>'safe_full','integrity_status'=>'verified','restore_tested'=>false
 ]));
@@ -676,7 +712,7 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// RC5 must reject stale/direct approval and migration mutation POSTs even with
+// RC6 must reject stale/direct approval and migration mutation POSTs even with
 // valid admin permissions/nonce. Production writing stays hard-blocked in RC.
 foreach (['security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval'] as $blocked_action) {
     $_POST = ['mg_action' => $blocked_action, 'mg_nonce' => 'fixture'];
