@@ -3,7 +3,7 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.2.1
+Stable tag: 1.3.0-rc7
 License: GPLv2 or later
 
 MG Sao Luu v1.2.1: Backup, Verify, Store, Restore co kiem soat va rollback.
@@ -28,6 +28,16 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 5. Keep hosting JetBackup + offsite independently. Production only after separate acceptance.
 
 == Changelog ==
+
+= 1.3.0-rc7 =
+* Simplify Backup/Restore into small data Packs: Settings, WordPress Content, Full DB.
+* Separate Migration/domain rewrite from Restore; Pack Restore is same-host and same-prefix only.
+* Settings Pack excludes WordPress transient rows.
+* Content Pack keeps posts/postmeta + taxonomy + comments as one consistent table group.
+* Pack v2 uses native mysqldump, Zstd -1 when available, and streaming XChaCha20-Poly1305 encryption.
+* Restore creates a checkpoint of the same Pack only.
+* Routine binary/system/backup-list/self-integrity caches no longer write DB transients.
+
 
 = 1.2.1 =
 * Stable Backup/Restore release after isolated-clone runtime acceptance through RC9.
