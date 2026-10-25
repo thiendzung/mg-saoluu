@@ -58,6 +58,15 @@ $src=file_get_contents($worker);
 wt('worker is CLI-only', str_contains($src, "PHP_SAPI !== 'cli'"));
 wt('worker never bootstraps WordPress', !str_contains($src,'wp-load.php') && !str_contains($src,'ABSPATH') && !str_contains($src,'update_option(') && !str_contains($src,'set_transient('));
 
+$packs_src=file_get_contents($plugin . '/includes/packs.php');
+wt('RC9 worker launch is synchronous shutdown execution',
+    str_contains($packs_src, "register_shutdown_function(static function()")
+    && str_contains($packs_src, "fastcgi_finish_request")
+    && !str_contains($packs_src, "nohup")
+    && !str_contains($packs_src, "2>&1 < /dev/null &"));
+wt('worker no longer acquires a second global flock',
+    !str_contains($src, "global_lock") && !str_contains($src, "flock("));
+
 $root=sys_get_temp_dir().'/mgsl-worker-contract-'.bin2hex(random_bytes(4));
 mkdir($root,0700,true);
 
