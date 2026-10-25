@@ -1,3 +1,15 @@
+## 1.3.0-rc7 — Simple Pack Backup/Restore (2026-10-25)
+
+- Stop the migration/rollback patch train and rebuild the next release from v1.2.1 Stable.
+- Separate Backup/Restore from Migration. Pack Restore is same-host/same-prefix only and never rewrites domain.
+- Add three explicit DB Packs: Settings, WordPress Content and Full DB.
+- Settings Pack excludes transient rows; Content Pack keeps the complete core content-table dependency group in one native mysqldump snapshot.
+- Add Pack v2 streaming encryption with libsodium XChaCha20-Poly1305 secretstream and Argon2id key derivation.
+- Prefer Zstd level 1 around a store-only ZIP container; fall back to ordinary ZIP Deflate when zstd is unavailable.
+- Restore creates only a same-Pack checkpoint; failure re-applies that checkpoint rather than rolling back the whole website.
+- Move routine UI/integrity caches out of DB-backed Transients; new audit events live in private 0600 JSON outside webroot.
+- Production Pack Restore remains hard-blocked in RC7.
+
 ## 1.2.1 — Stable Backup & Restore (2026-10-24)
 
 - Promote the runtime-accepted RC9 Backup/Restore tree to Stable; no Data Transfer/Deploy features are re-enabled.
