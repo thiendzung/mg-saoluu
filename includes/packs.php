@@ -101,55 +101,59 @@ function mg_saoluu_pack_cleanup_sql($pack, $tables) {
 }
 
 /**
- * Selective packs use one native mysqldump process, preserving one consistent
- * snapshot across the whole table group. Restore SQL contains only DML:
- * existing schema is kept, selected rows/tables are replaced transactionally.
+ * One deterministic dump profile is used for backup-state hashing and worker
+ * post-restore verification. Rows are ordered by primary/unique key.
  */
-function mg_saoluu_pack_dump_sql($pack, $sql_file) {
-    $pack = sanitize_key((string) $pack);
-    $definition = mg_saoluu_pack_definition($pack);
-    if (!$definition) return new WP_Error('pack_invalid', 'Pack backup không hợp lệ.');
-    if ($pack === 'full_db') return mg_saoluu_run_mysqldump($sql_file);
-
-    $tables = mg_saoluu_pack_tables($pack);
-    if (is_wp_error($tables)) return $tables;
-    $cleanup = mg_saoluu_pack_cleanup_sql($pack, $tables);
-    if (is_wp_error($cleanup)) return $cleanup;
-
-    $binary = mg_saoluu_find_binary('mysqldump');
-    if (!mg_saoluu_exec_available() || !$binary) return new WP_Error('mysqldump_required', 'Pack backup cần mysqldump/mariadb-dump native.');
-    $config = mg_saoluu_create_mysql_config();
-    if (is_wp_error($config)) return $config;
-
-    $handle = @fopen($sql_file, 'xb');
-    if (!$handle) { @unlink($config); return new WP_Error('pack_sql_temp', 'Không tạo được SQL Pack tạm.'); }
-    @chmod($sql_file, 0600);
-    $header = "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\nSTART TRANSACTION;\n" . $cleanup . "\n";
-    $ok = mg_saoluu_write_all($handle, $header);
-    fclose($handle);
-    if (!$ok) { @unlink($config); @unlink($sql_file); return new WP_Error('pack_sql_write', 'Không ghi được SQL Pack.'); }
-
-    $version = mg_saoluu_binary_version($binary);
+function mg_saoluu_pack_dump_options($pack, $binary) {
     $options = [
         '--single-transaction',
         '--quick',
         '--skip-lock-tables',
         '--hex-blob',
         '--default-character-set=utf8mb4',
-        '--no-create-info',
-        '--replace',
-        '--skip-triggers',
-        '--skip-add-locks',
         '--skip-comments',
+        '--skip-add-locks',
+        '--order-by-primary',
     ];
+    if ($pack !== 'full_db') {
+        $options[] = '--no-create-info';
+        $options[] = '--replace';
+        $options[] = '--skip-triggers';
+    }
+    $version = mg_saoluu_binary_version($binary);
     if (stripos($version, 'MariaDB') === false) {
         $options[] = '--no-tablespaces';
         $options[] = '--set-gtid-purged=OFF';
     }
     if ($pack === 'settings') $options[] = '--where=' . mg_saoluu_pack_settings_predicate();
+    return $options;
+}
+
+function mg_saoluu_pack_state_hash_file($path) {
+    $h = @fopen($path, 'rb');
+    if (!$h) return '';
+    $ctx = hash_init('sha256');
+    while (($line = fgets($h)) !== false) {
+        $line = preg_replace('/\\sAUTO_INCREMENT=\\d+\\b/i', '', $line);
+        hash_update($ctx, $line);
+    }
+    fclose($h);
+    return hash_final($ctx);
+}
+
+function mg_saoluu_pack_run_dump($pack, $output, $tables = null) {
+    $binary = mg_saoluu_find_binary('mysqldump');
+    if (!mg_saoluu_exec_available() || !$binary) return new WP_Error('mysqldump_required', 'Pack backup cần mysqldump/mariadb-dump native.');
+    $config = mg_saoluu_create_mysql_config();
+    if (is_wp_error($config)) return $config;
+    $options = mg_saoluu_pack_dump_options($pack, $binary);
+    if ($tables === null) {
+        $tables = $pack === 'full_db' ? [] : mg_saoluu_pack_tables($pack);
+        if (is_wp_error($tables)) { @unlink($config); return $tables; }
+    }
 
     $private_temp = mg_saoluu_private_temp_dir();
-    if (is_wp_error($private_temp)) { @unlink($config); @unlink($sql_file); return $private_temp; }
+    if (is_wp_error($private_temp)) { @unlink($config); return $private_temp; }
     $error_file = $private_temp . 'mg-pack-dump-' . wp_generate_password(10, false, false) . '.log';
     $parts = [
         escapeshellarg($binary),
@@ -157,24 +161,57 @@ function mg_saoluu_pack_dump_sql($pack, $sql_file) {
     ];
     foreach ($options as $option) $parts[] = escapeshellarg($option);
     $parts[] = escapeshellarg(DB_NAME);
-    foreach ($tables as $table) $parts[] = escapeshellarg($table);
-    $command = implode(' ', $parts) . ' >> ' . escapeshellarg($sql_file) . ' 2> ' . escapeshellarg($error_file);
+    foreach ((array) $tables as $table) $parts[] = escapeshellarg($table);
+    $command = implode(' ', $parts) . ' > ' . escapeshellarg($output) . ' 2> ' . escapeshellarg($error_file);
     $out = []; $status = 1; @set_time_limit(0);
     exec($command, $out, $status);
     @unlink($config);
-    if ($status !== 0 || !is_file($sql_file) || filesize($sql_file) < strlen($header)) {
-        @unlink($sql_file); @unlink($error_file);
+    if ($status !== 0 || !is_file($output) || filesize($output) < 1) {
+        @unlink($output); @unlink($error_file);
         return new WP_Error('pack_dump_failed', 'Không tạo được SQL Pack nhất quán.');
     }
     @unlink($error_file);
-    $tail = @fopen($sql_file, 'ab');
-    if (!$tail || !mg_saoluu_write_all($tail, "\nCOMMIT;\nSET FOREIGN_KEY_CHECKS=1;\n")) {
-        if ($tail) fclose($tail);
-        @unlink($sql_file);
-        return new WP_Error('pack_sql_write', 'Không hoàn tất SQL Pack.');
+    @chmod($output, 0600);
+    $state_hash = mg_saoluu_pack_state_hash_file($output);
+    if ($state_hash === '') { @unlink($output); return new WP_Error('pack_state_hash', 'Không fingerprint được trạng thái Pack.'); }
+    return ['state_hash' => $state_hash, 'dump_options' => $options];
+}
+
+function mg_saoluu_pack_dump_sql($pack, $sql_file) {
+    $pack = sanitize_key((string) $pack);
+    if (!mg_saoluu_pack_definition($pack)) return new WP_Error('pack_invalid', 'Pack backup không hợp lệ.');
+
+    if ($pack === 'full_db') {
+        return mg_saoluu_pack_run_dump($pack, $sql_file, []);
     }
-    fclose($tail);
-    return true;
+
+    $tables = mg_saoluu_pack_tables($pack);
+    if (is_wp_error($tables)) return $tables;
+    $cleanup = mg_saoluu_pack_cleanup_sql($pack, $tables);
+    if (is_wp_error($cleanup)) return $cleanup;
+    $private = mg_saoluu_private_temp_dir();
+    if (is_wp_error($private)) return $private;
+    $data_file = $private . 'mg-pack-data-' . wp_generate_password(14, false, false) . '.sql';
+
+    $dump = mg_saoluu_pack_run_dump($pack, $data_file, $tables);
+    if (is_wp_error($dump)) return $dump;
+
+    $out = @fopen($sql_file, 'xb');
+    $in = @fopen($data_file, 'rb');
+    if (!$out || !$in) {
+        if ($out) fclose($out); if ($in) fclose($in);
+        @unlink($data_file); @unlink($sql_file);
+        return new WP_Error('pack_sql_temp', 'Không tạo được SQL Pack tạm.');
+    }
+    @chmod($sql_file, 0600);
+    $header = "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\nSTART TRANSACTION;\n" . $cleanup . "\n";
+    $ok = mg_saoluu_write_all($out, $header)
+        && stream_copy_to_stream($in, $out) !== false
+        && mg_saoluu_write_all($out, "\nCOMMIT;\nSET FOREIGN_KEY_CHECKS=1;\n")
+        && @fflush($out);
+    fclose($in); fclose($out); @unlink($data_file);
+    if (!$ok) { @unlink($sql_file); return new WP_Error('pack_sql_write', 'Không hoàn tất SQL Pack.'); }
+    return $dump;
 }
 
 function mg_saoluu_pack_zstd_binary() {
