@@ -1,3 +1,11 @@
+## 1.3.0-rc12 — Logical Settings state hash (2026-10-25)
+
+- Settings Pack state verification no longer depends on physical `wp_options.option_id` values.
+- Settings rows are dumped one per statement, normalized to remove only the surrogate ID, sorted by logical row content, then hashed identically during backup and worker post-verify.
+- Option name/value/autoload changes still change the hash; only physical IDs and row order are ignored.
+- Fresh RC12 Settings Packs are required; older Settings fingerprint versions fail closed.
+- RC11 oversized upload client gate is retained unchanged.
+
 ## 1.3.0-rc11 — Settings hash + upload size gate (2026-10-25)
 
 - Settings Pack excludes volatile WordPress runtime rows (cron, rewrite rules and updater locks) from the deterministic backup/post-verify scope.
