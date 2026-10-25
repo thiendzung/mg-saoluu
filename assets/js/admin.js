@@ -106,10 +106,31 @@
         if (!field) return;
         var limit = Number(field.getAttribute('data-mgsl-max-upload')) || 0;
         var picked = field.files && field.files[0];
-        field.setCustomValidity(picked && limit && picked.size > limit
+        var tooLarge = !!(picked && limit && picked.size > limit);
+        field.setCustomValidity(tooLarge
             ? 'File vượt giới hạn upload. Hãy dùng bản đang lưu hoặc điều chỉnh PHP chỉ trên clone.'
             : '');
-        if (field.validationMessage) field.reportValidity();
+
+        var form = field.closest('form');
+        if (form) {
+            var submit = form.querySelector('button[type="submit"], input[type="submit"], button.button-primary');
+            if (submit) {
+                if (tooLarge) {
+                    if (!submit.disabled) submit.dataset.mgslSizeDisabled = '1';
+                    submit.disabled = true;
+                } else if (submit.dataset.mgslSizeDisabled === '1') {
+                    submit.disabled = false;
+                    delete submit.dataset.mgslSizeDisabled;
+                }
+            }
+            var warning = form.querySelector('[data-mgsl-upload-warning]');
+            if (warning) {
+                warning.textContent = tooLarge ? field.validationMessage : '';
+                warning.hidden = !tooLarge;
+            }
+        }
+
+        if (tooLarge) field.reportValidity();
     });
 
     document.addEventListener('submit', function (event) {
