@@ -557,7 +557,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
             $path = mg_saoluu_get_backup_dir() . $name;
             if (!is_readable($path)) { $status = 'error'; $message = 'Không tìm thấy file sao lưu.'; return; }
             $restore_files = ($_POST['restore_mode'] ?? 'database') === 'files_database';
-            $change_url = isset($_POST['change_url']);
+            $change_url = mg_saoluu_environment() === 'production' ? false : isset($_POST['change_url']);
             $password = (string) wp_unslash($_POST['backup_password'] ?? '');
             $result = mg_saoluu_restore_zip($path, $restore_files, $change_url, $password);
             if (is_wp_error($result)) {
@@ -584,7 +584,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
             $staged = mg_saoluu_stage_upload($file, $extension);
             if (is_wp_error($staged)) { $status = 'error'; $message = $staged->get_error_message(); return; }
             $restore_files = ($_POST['restore_mode'] ?? 'database') === 'files_database';
-            $change_url = isset($_POST['change_url']);
+            $change_url = mg_saoluu_environment() === 'production' ? false : isset($_POST['change_url']);
             $password = (string) wp_unslash($_POST['backup_password'] ?? '');
             $result = mg_saoluu_restore_zip($staged, $restore_files, $change_url, $password);
             @unlink($staged);
