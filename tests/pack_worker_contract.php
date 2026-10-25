@@ -2,7 +2,8 @@
 /** Standalone worker regression with fake mysql/mysqldump; no WordPress, no real DB. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 
-$worker = rtrim((string)(getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/bin/pack-restore-worker.php';
+$plugin = rtrim((string)(getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/');
+$worker = $plugin . '/bin/pack-restore-worker.php';
 $count = 0;
 function wt($name, $ok) {
     global $count; $count++;
@@ -32,7 +33,6 @@ function make_worker_fixture($root, $initial, $target, $expected_hash) {
         'job_id'=>basename($work),
         'journal'=>$journal,
         'work_dir'=>$work,
-        'global_lock'=>$root . '/global.lock',
         'pack'=>'full_db',
         'database'=>'fixture',
         'mysql_binary'=>$mysql,
