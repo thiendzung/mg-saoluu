@@ -20,13 +20,14 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         return;
     }
 
-    // RC release cannot authorize production restore, even via a forged/stale admin POST.
+    // Production Full Site Restore requires an explicit stable-build capability.
+    // A version rename/tag alone must never authorize challenge/sign/apply flows.
     // Keep security_lock_restore available to revoke any old unlock token.
-    if (strpos(MG_SAOLUU_VERSION, '-rc') !== false && in_array($action, [
+    if (!mg_saoluu_production_full_restore_enabled() && in_array($action, [
         'security_restore_challenge', 'security_sign_restore_challenge', 'security_apply_restore_approval',
     ], true)) {
         $status = 'error';
-        $message = 'Bản RC không hỗ trợ cấp quyền Restore production. Chỉ kiểm thử trên clone độc lập.';
+        $message = 'Build này không được phép cấp quyền Restore production.';
         return;
     }
 
@@ -399,7 +400,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
 
         if ($action === 'pack_restore_upload') {
             if (mg_saoluu_environment() === 'production') {
-                $status='error'; $message='Bản RC khóa Pack Restore trên Production. Chỉ thử trên clone/staging.'; return;
+                $status='error'; $message='Pack Restore vẫn bị khóa trên Production. Hãy dùng Full Site Restore cùng-host đã được phê duyệt.'; return;
             }
             if (!isset($_POST['pack_restore_confirm'])) {
                 $status='error'; $message='Hãy xác nhận phục hồi đúng Pack đã chọn.'; return;
@@ -440,6 +441,9 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         }
 
         if ($action === 'pack_restore') {
+            if (mg_saoluu_environment() === 'production') {
+                $status='error'; $message='Pack Restore vẫn bị khóa trên Production. Hãy dùng Full Site Restore cùng-host đã được phê duyệt.'; return;
+            }
             if (!isset($_POST['pack_restore_confirm'])) {
                 $status='error'; $message='Hãy xác nhận phục hồi đúng Pack đã chọn.'; return;
             }
@@ -528,8 +532,8 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         }
 
         if (in_array($action, ['restore_saved', 'restore_zip_upload', 'restore_sql_upload'], true)) {
-            if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-                $status = 'error'; $message = 'Bản RC chưa được phép restore production. Chỉ kiểm thử trên clone độc lập.'; return;
+            if (mg_saoluu_environment() === 'production' && !mg_saoluu_production_full_restore_enabled()) {
+                $status = 'error'; $message = 'Build này chưa được phép Full Site Restore trên Production.'; return;
             }
             $self = mg_saoluu_self_integrity();
             if (empty($self['ok'])) { $status = 'error'; $message = 'Đã chặn khôi phục vì file của MG Sao Lưu đang thiếu hoặc lệch phiên bản. Hãy cài lại đúng ZIP trước.'; return; }
