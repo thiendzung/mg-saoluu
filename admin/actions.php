@@ -420,7 +420,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
             if ($password === '') {
                 $status='error'; $message='Không có Recovery Key để mở Pack.'; return;
             }
-            $result = mg_saoluu_restore_pack($path, $password);
+            $result = mg_saoluu_restore_pack($path, $password, $lock);
             if (is_wp_error($result)) {
                 $status='error'; $message=$result->get_error_message();
             } else {
