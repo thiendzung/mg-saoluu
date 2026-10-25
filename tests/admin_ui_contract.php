@@ -1,5 +1,5 @@
 <?php
-/** Static RC10 admin UI/upload contracts; no WordPress bootstrap. */
+/** Static admin UI/upload contracts; no WordPress bootstrap. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 
 $plugin = rtrim((string)(getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/');
@@ -57,7 +57,7 @@ ui_check('local Pack upload is accepted only through native PHP upload semantics
 
 $prod = strpos($actions, "if (mg_saoluu_environment() === 'production')");
 $stage = strpos($actions, 'mg_saoluu_stage_pack_upload(');
-ui_check('RC10 blocks Production before staging local upload',
+ui_check('RC build blocks Production before staging local upload',
     $prod !== false && $stage !== false && $prod < $stage);
 
 ui_check('uploaded Pack is deleted after staging restore job',
