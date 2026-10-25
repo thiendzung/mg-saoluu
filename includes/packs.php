@@ -715,7 +715,7 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
     if (!mg_saoluu_pack_definition($pack)) { @unlink($prepared['zip']); return new WP_Error('pack_invalid', 'Pack không được hỗ trợ.'); }
     if ((int) ($manifest['version'] ?? 0) < 2 || !preg_match('/^[a-f0-9]{64}$/', (string) ($manifest['state_hash'] ?? ''))) {
         @unlink($prepared['zip']);
-        return new WP_Error('pack_post_verify_missing', 'Pack cũ không có state hash hậu kiểm; RC10 chỉ Verify, không Restore file này.');
+        return new WP_Error('pack_post_verify_missing', 'Pack cũ không có state hash hậu kiểm; bản RC chỉ Verify, không Restore file này.');
     }
     if (strtolower((string) ($manifest['source_host'] ?? '')) !== strtolower(mg_saoluu_host())) {
         @unlink($prepared['zip']);
