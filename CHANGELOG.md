@@ -1,3 +1,15 @@
+## 1.3.1 — Simple Full Backup & Restore (2026-10-25)
+
+- Collapse the active product surface to three tabs: Backup, Restore and Saved Backups.
+- Remove environment selection, Production/Local/Staging restore modes, signer pairing, challenge/approval and temporary unlock from the active flow.
+- Disable Pack Backup/Restore, verify-only restore and raw SQL Restore actions in v1.3.1.
+- Backup action always creates a Full Site backup (database + files).
+- Runtime ZIP uses Deflate level 1 to favor backup speed while retaining standard ZIP compatibility.
+- Restore always applies database + files and always creates a pre-restore checkpoint.
+- Restore automatically rewrites the backup source home/site URL to the current WordPress home/site URL, including serialized values handled by the existing safe replacer.
+- Cross-domain restore is allowed when the DB table prefix matches; source environment/host and source-site HMAC are no longer restore gates.
+- Keep SHA-256 payload verification, private storage, CLI database tools, path/symlink guards, exact snapshot prune, plugin self-protection and automatic rollback.
+
 ## 1.3.0 — Guarded Production Full Site Restore (2026-10-25)
 
 - Promote the accepted RC13 Backup/Verify/drag-drop behavior to Stable only through an explicit Production Full Site Restore capability gate; version text alone cannot authorize live writes.
