@@ -5,7 +5,7 @@
   "generated_at": "2026-10-25T16:20:00+00:00",
   "files": {
     ".htaccess": "8a140e242a320239d8217be279f4ee83a7157f45c3b9df5f121e868997af81ef",
-    "CHANGELOG.md": "875326fe78d9845e0c242061763523d642d6ad25ff47e6ebb8823cc41b6b8fea",
+    "CHANGELOG.md": "8236d95b14455626b4318a2f8211173bc91da8a870ac6768e5901642dee23119",
     "README.md": "0b6b270227c97f97c76ae0318d948917c0fd83d2977e5801b81f5b7239d3afc1",
     "RECOVERY_RUNBOOK.md": "b6b1952d2efb6ab0c8e21e5a9af50cfabd80388d16018a8e09a7d0c1fb444ce7",
     "admin/actions.php": "74a56393b659437ac089c9903bccdb41a8ea16a60903240b93ddacb09367c716",
@@ -23,7 +23,7 @@
     "includes/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "includes/integrity.php": "a0dbda0b3c6d5da08a48bb12af2d317592029710489684e52388ac2e79e98bcd",
     "includes/lifecycle.php": "00ba796ef14b053bbb96254470112eea138199133aadbf65a17fd5addce2e262",
-    "includes/restore.php": "c8f6b1bfd98ebde2aeed9e55e150cb01e45f9e4883f571dd0febc9ef1b5dafa0",
+    "includes/restore.php": "54c0d889c1ec4254f54cadd2ab9783554f7a783c669beedecfe89f77b9e2dd74",
     "includes/security.php": "ffc3c086d9115eda7e91b9256d494c5380ad2cb34b71ce4652ed6460f977b5b2",
     "index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "mg-saoluu.php": "b418f13d4dfc92a7c0a1bf801a816489649b5fef892f5317305acaa5c96fc9f3",
