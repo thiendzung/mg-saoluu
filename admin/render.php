@@ -162,7 +162,7 @@ function mg_saoluu_render_page() {
         $security_checks = mg_saoluu_security_checks();
     }
     if ($page_section === 'security') {
-        $logs = get_option('mg_saoluu_audit_log', []);
+        $logs = mg_saoluu_audit_log_read();
         if (!is_array($logs)) $logs = [];
         $security_output = mg_saoluu_security_output_get();
         $trusted_signers = mg_saoluu_security_trusted_signers();
