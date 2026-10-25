@@ -546,24 +546,23 @@ function mg_saoluu_pack_latest_job_status() {
 function mg_saoluu_pack_schedule_worker_launch($php, $worker, $job_file, $journal) {
     if (!mg_saoluu_exec_available()) return new WP_Error('pack_worker_exec', 'Hosting đã tắt exec nên không thể chạy worker Restore an toàn.');
     if (!mg_saoluu_path_is_executable($php) || !is_file($worker) || !is_readable($worker)) return new WP_Error('pack_worker_missing', 'Không tìm thấy PHP CLI worker.');
-    add_action('shutdown', static function() use ($php, $worker, $job_file, $journal) {
-        $nohup = mg_saoluu_command_path('nohup');
-        $prefix = $nohup !== '' ? escapeshellarg($nohup) . ' ' : '';
-        $cmd = $prefix
-            . escapeshellarg($php) . ' '
-            . escapeshellarg($worker) . ' '
-            . escapeshellarg($job_file)
-            . ' > /dev/null 2>&1 < /dev/null &';
-        $out = []; $status = 1;
-        @exec($cmd, $out, $status);
-        if ($status !== 0) {
-            mg_saoluu_pack_write_private_json($journal, [
-                'status' => 'worker_launch_failed',
-                'error_code' => 'worker_launch_failed',
-                'updated_at' => gmdate('c'),
-            ]);
-        }
-    }, PHP_INT_MAX);
+    $nohup = mg_saoluu_command_path('nohup');
+    $prefix = $nohup !== '' ? escapeshellarg($nohup) . ' ' : '';
+    $cmd = $prefix
+        . escapeshellarg($php) . ' '
+        . escapeshellarg($worker) . ' '
+        . escapeshellarg($job_file)
+        . ' > /dev/null 2>&1 < /dev/null &';
+    $out = []; $status = 1;
+    @exec($cmd, $out, $status);
+    if ($status !== 0) {
+        mg_saoluu_pack_write_private_json($journal, [
+            'status' => 'worker_launch_failed',
+            'error_code' => 'worker_launch_failed',
+            'updated_at' => gmdate('c'),
+        ]);
+        return new WP_Error('worker_launch_failed', 'Không khởi chạy được Restore worker.');
+    }
     return true;
 }
 
