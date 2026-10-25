@@ -71,7 +71,10 @@ function mg_saoluu_pack_schema_fingerprint($tables) {
         if ($quoted === '') return new WP_Error('pack_schema_name', 'Tên bảng không an toàn.');
         $row = $wpdb->get_row('SHOW CREATE TABLE ' . $quoted, ARRAY_N);
         if (!is_array($row) || empty($row[1])) return new WP_Error('pack_schema_missing', 'Không đọc được schema bảng ' . $table . '.');
-        $items[(string) $table] = (string) $row[1];
+        // AUTO_INCREMENT=N is runtime data state, not structural schema. MySQL
+        // may advance it after inserts even when columns/indexes are unchanged.
+        $create_sql = preg_replace('/\\sAUTO_INCREMENT=\\d+\\b/i', '', (string) $row[1]);
+        $items[(string) $table] = preg_replace('/\\s+/', ' ', trim((string) $create_sql));
     }
     ksort($items, SORT_STRING);
     return hash('sha256', wp_json_encode($items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
