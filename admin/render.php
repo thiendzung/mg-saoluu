@@ -264,7 +264,44 @@ function mg_saoluu_render_page() {
             <?php if ($backup_inside_web): ?><div class="mgsl-card mgsl-note mgsl-warning"><strong>Bản sao đang nằm trong website.</strong> Hãy tải bản quan trọng về Mac hoặc nơi lưu riêng.</div><?php endif; ?>
 
         <?php elseif ($active === 'backup'): ?>
-            <section class="mgsl-card"><h2 class="mgsl-title">Tạo bản sao</h2><div class="mgsl-note mgsl-warning">Backup full không gồm wp-config.php, .htaccess và Recovery Key. Để phục hồi khi mất hosting, giữ Recovery Kit riêng ngoài host. Lịch tự động bắt buộc mã hóa.</div><p>Chọn đúng mục đích. Mỗi lựa chọn chỉ có một nút riêng để tránh nhầm.</p></section>
+            <section class="mgsl-card">
+                <h2 class="mgsl-title">Backup theo phần dữ liệu</h2>
+                <p>Chọn đúng phần cần lưu. Pack v2 luôn mã hóa; Restore chỉ thay đúng Pack đó và tự tạo checkpoint cùng loại trước khi ghi.</p>
+                <div class="mgsl-note mgsl-success">
+                    <?php if (mg_saoluu_pack_zstd_binary()): ?>
+                        Nén: <strong>Zstd -1</strong> · Mã hóa: <strong>XChaCha20-Poly1305 secretstream</strong>.
+                    <?php else: ?>
+                        Hosting chưa có zstd: dùng ZIP Deflate tương thích · Mã hóa vẫn là <strong>XChaCha20-Poly1305 secretstream</strong>.
+                    <?php endif; ?>
+                </div>
+            </section>
+            <section class="mgsl-grid-2">
+                <?php foreach (mg_saoluu_pack_registry() as $pack_key => $pack_info): ?>
+                <div class="mgsl-choice mgsl-card">
+                    <h3><?php echo esc_html($pack_info['label']); ?></h3>
+                    <p><?php echo esc_html($pack_info['description']); ?></p>
+                    <?php if ($pack_key === 'content'): ?>
+                        <p class="mgsl-small">WordPress không có bảng Page riêng: bài viết/trang phụ thuộc postmeta, taxonomy và comments nên Pack nội dung giữ trọn nhóm bảng liên quan.</p>
+                    <?php endif; ?>
+                    <form method="post" onsubmit="return confirm('Tạo Pack <?php echo esc_js($pack_info['label']); ?>?');">
+                        <?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
+                        <input type="hidden" name="mg_action" value="pack_backup">
+                        <input type="hidden" name="pack" value="<?php echo esc_attr($pack_key); ?>">
+                        <input type="hidden" name="return_tab" value="backup">
+                        <p><input type="text" name="backup_note" placeholder="Ghi chú" style="width:100%"></p>
+                        <details class="mgsl-details">
+                            <summary>Recovery Key / mật khẩu riêng</summary>
+                            <div class="mgsl-form-row two">
+                                <div class="mgsl-field"><label>Mật khẩu riêng</label><input type="password" name="backup_password" autocomplete="new-password" placeholder="Để trống = Recovery Key"></div>
+                                <div class="mgsl-field"><label>Nhập lại</label><input type="password" name="backup_password_confirm" autocomplete="new-password"></div>
+                            </div>
+                        </details>
+                        <button class="button button-primary">Tạo Pack <?php echo esc_html($pack_info['label']); ?></button>
+                    </form>
+                </div>
+                <?php endforeach; ?>
+            </section>
+            <section class="mgsl-card"><h2 class="mgsl-title">Backup toàn website / tương thích Stable</h2><div class="mgsl-note mgsl-warning">Full Site vẫn dùng engine Stable v1.2.1 để tương thích. Migration/domain rewrite không thuộc Restore Pack.</div></section>
             <section class="mgsl-grid-2">
                 <div class="mgsl-choice mgsl-card"><h3>Chỉ database</h3><p>Nhanh. Dùng trước thao tác thay đổi nội dung/cấu hình. Database không chứa ảnh và file theme.</p><form method="post" onsubmit="return confirm('Tạo bản sao database?');"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="backup"><input type="hidden" name="backup_type" value="sql"><input type="hidden" name="return_tab" value="backup"><p><input type="text" name="backup_note" placeholder="Ghi chú cho bản này" style="width:100%"></p><details class="mgsl-details"><summary>Bảo vệ và lưu ngoài hosting</summary><p><label><input type="checkbox" name="encrypt_backup" value="1" <?php checked(get_option('mg_saoluu_encrypt_default','1'), '1'); ?>> Mã hóa file (Recovery Key mặc định hoặc mật khẩu riêng)</label></p><div class="mgsl-form-row two"><div class="mgsl-field"><label>Mật khẩu mã hóa</label><input type="password" name="backup_password" autocomplete="new-password" placeholder="Ít nhất 12 ký tự"></div><div class="mgsl-field"><label>Nhập lại mật khẩu</label><input type="password" name="backup_password_confirm" autocomplete="new-password"></div></div><p><label><input type="checkbox" name="upload_drive" value="1" <?php disabled(!$drive_connected); ?>> Tải lên Google Drive sau khi tạo</label><?php if(!$drive_connected): ?> <span class="mgsl-small mgsl-orange">Chưa kết nối Google Drive</span><?php endif; ?></p><div class="mgsl-note mgsl-warning mgsl-small">Plugin không lưu mật khẩu nhập thủ công. Mất mật khẩu sẽ không thể mở bản sao.</div></details><button class="button button-primary">Sao lưu database</button></form></div>
                 <div class="mgsl-choice mgsl-card"><h3>Bản phục hồi website</h3><p>Database, theme, plugin và hình ảnh. Dùng trước thay đổi lớn hoặc khi cần khả năng phục hồi; không dùng để đẩy Local lên web thật.</p><form method="post" onsubmit="return confirm('Tạo bản sao toàn bộ an toàn?');"><?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?><input type="hidden" name="mg_action" value="backup"><input type="hidden" name="backup_type" value="safe_full"><input type="hidden" name="return_tab" value="backup"><p><input type="text" name="backup_note" placeholder="Ví dụ: Trước khi cập nhật WordPress" style="width:100%"></p><details class="mgsl-details"><summary>Bảo vệ và lưu ngoài hosting</summary><p><label><input type="checkbox" name="encrypt_backup" value="1" <?php checked(get_option('mg_saoluu_encrypt_default','1'), '1'); ?>> Mã hóa file (Recovery Key mặc định hoặc mật khẩu riêng)</label></p><div class="mgsl-form-row two"><div class="mgsl-field"><label>Mật khẩu mã hóa</label><input type="password" name="backup_password" autocomplete="new-password" placeholder="Ít nhất 12 ký tự"></div><div class="mgsl-field"><label>Nhập lại mật khẩu</label><input type="password" name="backup_password_confirm" autocomplete="new-password"></div></div><p><label><input type="checkbox" name="upload_drive" value="1" <?php disabled(!$drive_connected); ?>> Tải lên Google Drive sau khi tạo</label><?php if(!$drive_connected): ?> <span class="mgsl-small mgsl-orange">Chưa kết nối Google Drive</span><?php endif; ?></p><div class="mgsl-note mgsl-warning mgsl-small">Plugin không lưu mật khẩu nhập thủ công. Mất mật khẩu sẽ không thể mở bản sao.</div></details><button class="button button-primary">Tạo bản phục hồi website</button></form></div>
