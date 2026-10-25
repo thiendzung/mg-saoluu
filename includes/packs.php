@@ -488,20 +488,107 @@ function mg_saoluu_pack_extract_sql($zip_file, $manifest) {
     return $sql_file;
 }
 
-function mg_saoluu_restore_pack_internal($backup_file, $password, $with_checkpoint = true) {
-    if (!mg_saoluu_find_binary('mysql')) return new WP_Error('mysql_required', 'Pack Restore cần mysql/mariadb CLI native.');
-    if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-        return new WP_Error('rc_production_restore_disabled', 'RC7 chỉ test Pack Restore trên clone/staging.');
+function mg_saoluu_pack_php_cli() {
+    $candidates = [
+        mg_saoluu_command_path('php'),
+        defined('PHP_BINDIR') ? PHP_BINDIR . '/php' : '',
+        '/usr/bin/php',
+        '/usr/local/bin/php',
+        '/opt/homebrew/bin/php',
+    ];
+    foreach (array_values(array_unique(array_filter($candidates))) as $candidate) {
+        if (!mg_saoluu_path_is_executable($candidate)) continue;
+        $out = []; $status = 1;
+        @exec(escapeshellarg($candidate) . ' -r ' . escapeshellarg('echo PHP_SAPI;'), $out, $status);
+        if ($status === 0 && trim(implode('', $out)) === 'cli') return $candidate;
     }
+    return '';
+}
+
+function mg_saoluu_pack_jobs_dir() {
+    $dir = trailingslashit(mg_saoluu_get_backup_dir()) . 'jobs/';
+    if (!file_exists($dir) && !wp_mkdir_p($dir)) return new WP_Error('pack_job_dir', 'Không tạo được thư mục job private.');
+    if (!is_dir($dir) || is_link($dir) || !mg_saoluu_storage_path_safe($dir)) return new WP_Error('pack_job_dir', 'Thư mục job không an toàn.');
+    @chmod($dir, 0700);
+    return trailingslashit($dir);
+}
+
+function mg_saoluu_pack_write_private_json($path, $data) {
+    if (!is_array($data)) return new WP_Error('pack_job_json', 'Job phải là dữ liệu mảng.');
+    $json = wp_json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    if (!is_string($json)) return new WP_Error('pack_job_json', 'Không mã hóa được job.');
+    try { $suffix = bin2hex(random_bytes(8)); }
+    catch (Throwable $e) { return new WP_Error('pack_job_temp', 'Không tạo được tên file job tạm.'); }
+    $tmp = dirname($path) . '/.mg-job-' . $suffix . '.tmp';
+    $h = @fopen($tmp, 'xb');
+    if (!$h) return new WP_Error('pack_job_write', 'Không tạo được job private.');
+    @chmod($tmp, 0600);
+    $ok = mg_saoluu_write_all($h, $json) && @fflush($h);
+    fclose($h);
+    if (!$ok || !@rename($tmp, $path)) {
+        @unlink($tmp);
+        return new WP_Error('pack_job_write', 'Không ghi được job private.');
+    }
+    @chmod($path, 0600);
+    return true;
+}
+
+function mg_saoluu_pack_latest_job_status() {
+    $dir = mg_saoluu_pack_jobs_dir();
+    if (is_wp_error($dir)) return [];
+    $files = glob($dir . '*/journal.json') ?: [];
+    if (!$files) return [];
+    usort($files, static function($a, $b){ return @filemtime($b) <=> @filemtime($a); });
+    $data = mg_saoluu_read_metadata($files[0]);
+    return is_array($data) ? $data : [];
+}
+
+function mg_saoluu_pack_schedule_worker_launch($php, $worker, $job_file, $journal) {
+    if (!mg_saoluu_exec_available()) return new WP_Error('pack_worker_exec', 'Hosting đã tắt exec nên không thể chạy worker Restore an toàn.');
+    if (!mg_saoluu_path_is_executable($php) || !is_file($worker) || !is_readable($worker)) return new WP_Error('pack_worker_missing', 'Không tìm thấy PHP CLI worker.');
+    add_action('shutdown', static function() use ($php, $worker, $job_file, $journal) {
+        $nohup = mg_saoluu_command_path('nohup');
+        $prefix = $nohup !== '' ? escapeshellarg($nohup) . ' ' : '';
+        $cmd = $prefix
+            . escapeshellarg($php) . ' '
+            . escapeshellarg($worker) . ' '
+            . escapeshellarg($job_file)
+            . ' > /dev/null 2>&1 < /dev/null &';
+        $out = []; $status = 1;
+        @exec($cmd, $out, $status);
+        if ($status !== 0) {
+            mg_saoluu_pack_write_private_json($journal, [
+                'status' => 'worker_launch_failed',
+                'error_code' => 'worker_launch_failed',
+                'updated_at' => gmdate('c'),
+            ]);
+        }
+    }, PHP_INT_MAX);
+    return true;
+}
+
+function mg_saoluu_restore_pack($backup_file, $password) {
+    if (!mg_saoluu_find_binary('mysql') || !mg_saoluu_find_binary('mysqldump')) {
+        return new WP_Error('pack_cli_missing', 'Pack Restore cần mysql và mysqldump/mariadb-dump CLI.');
+    }
+    if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
+        return new WP_Error('rc_production_restore_disabled', 'RC8 chỉ test Pack Restore trên clone/staging.');
+    }
+
     $prepared = mg_saoluu_pack_prepare_zip($backup_file, $password);
     if (is_wp_error($prepared)) return $prepared;
     $manifest = $prepared['manifest'];
     $pack = sanitize_key((string) ($manifest['pack'] ?? ''));
     if (!mg_saoluu_pack_definition($pack)) { @unlink($prepared['zip']); return new WP_Error('pack_invalid', 'Pack không được hỗ trợ.'); }
+    if ((int) ($manifest['version'] ?? 0) < 2 || !preg_match('/^[a-f0-9]{64}$/', (string) ($manifest['state_hash'] ?? ''))) {
+        @unlink($prepared['zip']);
+        return new WP_Error('pack_post_verify_missing', 'Pack cũ không có state hash hậu kiểm; RC8 chỉ Verify, không Restore file này.');
+    }
     if (strtolower((string) ($manifest['source_host'] ?? '')) !== strtolower(mg_saoluu_host())) {
         @unlink($prepared['zip']);
         return new WP_Error('pack_host_mismatch', 'Pack Restore chỉ dùng cùng host. Migration/domain rewrite là chức năng riêng.');
     }
+
     global $wpdb;
     if ((string) ($manifest['db_table_prefix'] ?? '') !== (string) $wpdb->prefix) {
         @unlink($prepared['zip']);
@@ -510,42 +597,95 @@ function mg_saoluu_restore_pack_internal($backup_file, $password, $with_checkpoi
     if ($pack !== 'full_db') {
         $tables = mg_saoluu_pack_tables($pack);
         $schema = mg_saoluu_pack_schema_fingerprint($tables);
+        if (defined('MG_SAOLUU_QA_FORCE_SCHEMA_MISMATCH') && MG_SAOLUU_QA_FORCE_SCHEMA_MISMATCH === true && mg_saoluu_environment() !== 'production') {
+            $schema = 'qa-forced-mismatch';
+        }
         if (is_wp_error($schema) || !hash_equals((string) ($manifest['schema_fingerprint'] ?? ''), (string) $schema)) {
             @unlink($prepared['zip']);
             return new WP_Error('pack_schema_mismatch', 'Schema hiện tại khác Pack; đã dừng trước khi ghi DB.');
         }
+    } else {
+        $tables = [];
     }
 
-    $checkpoint = '';
-    if ($with_checkpoint) {
-        $checkpoint = mg_saoluu_create_pack_backup($pack, 'Checkpoint trước Pack Restore', $password, false, 'backup_pre_pack');
-        if (is_wp_error($checkpoint)) { @unlink($prepared['zip']); return $checkpoint; }
-    }
     $sql_file = mg_saoluu_pack_extract_sql($prepared['zip'], $manifest);
     @unlink($prepared['zip']);
     if (is_wp_error($sql_file)) return $sql_file;
 
-    $import = mg_saoluu_run_mysql_import($sql_file);
-    @unlink($sql_file);
-    if (is_wp_error($import)) {
-        if ($with_checkpoint && $checkpoint !== '') {
-            $rollback_path = mg_saoluu_get_backup_dir() . $checkpoint;
-            $rolled = mg_saoluu_restore_pack_internal($rollback_path, $password, false);
-            if (is_wp_error($rolled)) {
-                return new WP_Error('pack_rollback_failed', 'Pack Restore lỗi và checkpoint cùng Pack cũng không khôi phục được.');
-            }
-            return new WP_Error('pack_restore_reverted', 'Pack Restore lỗi; checkpoint cùng Pack đã được áp dụng lại.');
-        }
-        return $import;
+    $jobs = mg_saoluu_pack_jobs_dir();
+    if (is_wp_error($jobs)) { @unlink($sql_file); return $jobs; }
+    try { $job_id = gmdate('YmdHis') . '-' . bin2hex(random_bytes(6)); }
+    catch (Throwable $e) { @unlink($sql_file); return new WP_Error('pack_job_id', 'Không tạo được mã job.'); }
+    $work = $jobs . $job_id;
+    if (!@mkdir($work, 0700, false) || is_link($work)) { @unlink($sql_file); return new WP_Error('pack_job_dir', 'Không tạo được thư mục job.'); }
+    @chmod($work, 0700);
+
+    $target_sql = $work . '/target.sql';
+    if (!@rename($sql_file, $target_sql)) {
+        if (!@copy($sql_file, $target_sql)) { @unlink($sql_file); return new WP_Error('pack_job_sql', 'Không stage được SQL cho worker.'); }
+        @unlink($sql_file);
     }
-    wp_cache_flush();
-    return [
-        'operation' => $with_checkpoint ? 'restore' : 'rollback',
+    @chmod($target_sql, 0600);
+
+    $config = mg_saoluu_create_mysql_config();
+    if (is_wp_error($config)) { @unlink($target_sql); return $config; }
+    $job_config = $work . '/mysql.cnf';
+    if (!@rename($config, $job_config)) {
+        if (!@copy($config, $job_config)) { @unlink($config); @unlink($target_sql); return new WP_Error('pack_job_config', 'Không stage được MySQL config private.'); }
+        @unlink($config);
+    }
+    @chmod($job_config, 0600);
+
+    $mysql = mg_saoluu_find_binary('mysql');
+    $mysqldump = mg_saoluu_find_binary('mysqldump');
+    $php = mg_saoluu_pack_php_cli();
+    if ($php === '') { @unlink($job_config); @unlink($target_sql); return new WP_Error('pack_php_cli_missing', 'Restore hậu kiểm cần PHP CLI tối giản.'); }
+
+    $cleanup = $pack === 'full_db' ? '' : mg_saoluu_pack_cleanup_sql($pack, $tables);
+    if (is_wp_error($cleanup)) { @unlink($job_config); @unlink($target_sql); return $cleanup; }
+    $journal = $work . '/journal.json';
+    $job_file = $work . '/job.json';
+    $global_lock = trailingslashit(mg_saoluu_private_temp_dir()) . 'mg-saoluu-operation.lock';
+
+    $job = [
+        'version' => 1,
+        'job_id' => $job_id,
+        'journal' => $journal,
+        'work_dir' => $work,
+        'global_lock' => $global_lock,
         'pack' => $pack,
-        'checkpoint' => $checkpoint,
+        'database' => DB_NAME,
+        'mysql_binary' => $mysql,
+        'mysqldump_binary' => $mysqldump,
+        'mysql_config' => $job_config,
+        'target_sql' => $target_sql,
+        'expected_state_hash' => strtolower((string) $manifest['state_hash']),
+        'dump_options' => mg_saoluu_pack_dump_options($pack, $mysqldump),
+        'tables' => array_values((array) $tables),
+        'cleanup_sql' => (string) $cleanup,
+        'qa_force_post_verify_mismatch' => defined('MG_SAOLUU_QA_FORCE_POST_VERIFY_MISMATCH')
+            && MG_SAOLUU_QA_FORCE_POST_VERIFY_MISMATCH === true
+            && mg_saoluu_environment() !== 'production',
+    ];
+    $saved = mg_saoluu_pack_write_private_json($job_file, $job);
+    if (is_wp_error($saved)) { @unlink($job_config); @unlink($target_sql); return $saved; }
+    $queued = mg_saoluu_pack_write_private_json($journal, [
+        'job_id' => $job_id,
+        'status' => 'queued',
+        'pack' => $pack,
+        'expected_state_hash' => $job['expected_state_hash'],
+        'updated_at' => gmdate('c'),
+    ]);
+    if (is_wp_error($queued)) { @unlink($job_file); @unlink($job_config); @unlink($target_sql); return $queued; }
+
+    $scheduled = mg_saoluu_pack_schedule_worker_launch($php, MG_SAOLUU_DIR . 'bin/pack-restore-worker.php', $job_file, $journal);
+    if (is_wp_error($scheduled)) { @unlink($job_file); @unlink($job_config); @unlink($target_sql); return $scheduled; }
+
+    return [
+        'operation' => 'queued',
+        'pack' => $pack,
+        'job_id' => $job_id,
+        'journal' => $journal,
     ];
 }
 
-function mg_saoluu_restore_pack($backup_file, $password) {
-    return mg_saoluu_restore_pack_internal($backup_file, $password, true);
-}
