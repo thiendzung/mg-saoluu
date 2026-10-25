@@ -3,13 +3,12 @@ if (!defined('ABSPATH')) { exit; }
 
 /** Structured, bounded, opt-in diagnostics. Never store passwords, tokens or paths. */
 function mg_saoluu_debug_enabled() {
-    if (defined('MG_SAOLUU_DEBUG')) return MG_SAOLUU_DEBUG === true;
-    return mg_saoluu_environment() !== 'production';
+    return defined('MG_SAOLUU_DEBUG') && MG_SAOLUU_DEBUG === true;
 }
 
 function mg_saoluu_debug_context($context) {
     if (!is_array($context)) return [];
-    $allowed = ['type', 'phase', 'result', 'code', 'source_env', 'target_env', 'mode', 'drive_status',
+    $allowed = ['type', 'phase', 'result', 'code', 'mode', 'drive_status',
         'restore_files', 'file_count', 'bytes', 'url_rows', 'url_tables'];
     $numbers = ['restore_files', 'file_count', 'bytes', 'url_rows', 'url_tables'];
     $safe = [];
@@ -45,7 +44,7 @@ function mg_saoluu_debug_log($event, $context = []) {
     }
     $row = [
         'ts' => gmdate('c'), 'request_id' => $request_id, 'version' => MG_SAOLUU_VERSION,
-        'environment' => mg_saoluu_environment(), 'event' => strtolower($event),
+        'event' => strtolower($event),
         'details' => mg_saoluu_debug_context($context),
     ];
     $line = wp_json_encode($row, JSON_UNESCAPED_SLASHES);
