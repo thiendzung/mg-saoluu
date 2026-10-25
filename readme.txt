@@ -3,16 +3,15 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.3.0
-Current release: 1.3.0
+Stable tag: 1.3.1
+Current release: 1.3.1
 License: GPLv2 or later
 
-MG Sao Luu v1.3.0: Backup, Verify, Store, Restore co kiem soat, Production Full Site Restore cung-host va rollback.
+MG Sao Luu v1.3.1: Full Backup + Full Restore, tu nhan domain dich va tu dong doi URL khi khoi phuc.
 
 == Description ==
 
-Backup WordPress database + files, private storage, encrypted archive, separate retention,
-SHA-256 verification, Google Drive upload, protected restore and recovery runbook.
+Backup WordPress database + files, private storage, SHA-256 verification, checkpoint rollback va tu dong doi domain khi Restore.
 The Data Transfer/Theme Deploy functions from v1.1.9 are disabled and removed from active UI.
 Legacy plugin options remain untouched; inactive Data/Deploy source files are no longer shipped.
 
@@ -29,6 +28,14 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 5. Keep hosting JetBackup + offsite independently. Production only after separate acceptance.
 
 == Changelog ==
+
+= 1.3.1 =
+* Active UI chi con Sao luu, Khoi phuc, Ban da luu.
+* Full Backup luon gom database + files; ZIP Deflate level 1 uu tien toc do.
+* Full Restore luon database + files, tao checkpoint truoc khi ghi va tu rewrite domain nguon sang domain hien tai.
+* Bo signer/challenge/unlock va phan biet Production/Local/Staging khoi luong su dung.
+* Giu checksum, DB prefix guard, path/symlink guard, snapshot prune va automatic rollback.
+
 
 = 1.3.0-rc9 =
 * Move Pack DB apply/post-verify/rollback into a standalone CLI worker that never bootstraps WordPress/plugins/themes/mu-plugins.
