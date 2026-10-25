@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.3.0-rc13 — restore upload UX + verify-only Production
+# MG Sao Lưu v1.3.0 — guarded same-host Production Full Site Restore
 
 WordPress Backup → Verify → Store → Restore. Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 
@@ -65,3 +65,9 @@ Settings Pack post-verify now hashes durable option rows by logical content (`op
 
 ## RC13: Restore upload UX
 Restore now has real drag-and-drop file inputs. Pack v2 accepts `.mgbackup`; Full Site accepts `.zip` or `.mgbackup`. On Production, RC13 exposes Full Site upload only as a non-destructive verification path: it validates upload limits/type, archive integrity, manifest/source identity and SHA-256, then deletes the staged file. It does not call Restore or Import. Local/Staging retain the existing guarded restore path.
+
+
+## Stable 1.3.0: Production Full Site Restore
+Stable 1.3.0 intentionally enables only **Full Site Restore** on Production. A live restore requires an explicit stable-build capability, a fresh signed Local approval window, administrator password, exact Production host confirmation, exact RESTORE phrase, same-host/same-prefix backup provenance, valid manifest signature, healthy current baseline, native mysql/mysqldump, and an automatic pre-restore checkpoint. Production URL rewrite is forced off server-side. **Pack Restore remains blocked on Production** in Stable 1.3.0; use Pack Restore only on isolated Local/Staging until its Production data model receives a separate acceptance.
+
+Full Site Restore uses snapshot semantics for managed files: after copying the backup, files inside the backed-up scope that are not present in the snapshot are pruned through the same destination/symlink guards. Explicit exclusions such as `wp-config.php`, `.htaccess`, cache/backup paths, and the currently executing MG Sao Luu plugin are preserved. If pruning cannot complete exactly, the restore is treated as failed and the pre-restore checkpoint is applied.

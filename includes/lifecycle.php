@@ -38,6 +38,8 @@ add_action('admin_init', 'mg_saoluu_maybe_upgrade', 1);
 function mg_saoluu_maybe_upgrade() {
     $installed = (string) get_option('mg_saoluu_installed_version', '');
     if ($installed === MG_SAOLUU_VERSION) return;
+    // A new build must never inherit a Production Restore authorization window.
+    delete_transient('mg_saoluu_production_restore_unlocked');
     $looks_existing = get_option('mg_saoluu_environment', null) !== null;
     // Bản vá và nâng cấp nhỏ giữ nguyên thiết lập đã hoàn tất.
     // Chỉ cài mới mới cần chạy trình thiết lập ban đầu.
@@ -78,6 +80,14 @@ function mg_saoluu_signing_key() {
 
 function mg_saoluu_production_constant_enabled() {
     return defined('MG_SAOLUU_ALLOW_PRODUCTION_RESTORE') && MG_SAOLUU_ALLOW_PRODUCTION_RESTORE === true;
+}
+
+/** Explicit stable-build capability gate; version text alone must never unlock Production Restore. */
+function mg_saoluu_production_full_restore_enabled() {
+    return defined('MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE')
+        && MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE === true
+        && defined('MG_SAOLUU_VERSION')
+        && strpos(MG_SAOLUU_VERSION, '-rc') === false;
 }
 
 function mg_saoluu_audit_log_read() {

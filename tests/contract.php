@@ -66,9 +66,11 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.3.0-rc13');
+define('MG_SAOLUU_VERSION', '1.3.0');
+define('MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE', true);
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
+function mg_saoluu_production_full_restore_enabled(){return MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE === true && strpos(MG_SAOLUU_VERSION, '-rc') === false;}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
 function mg_saoluu_environment_info($env=''){
     $env=$env!==''?$env:mg_saoluu_environment();
@@ -97,7 +99,8 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('RC13 version constant promoted', MG_SAOLUU_VERSION === '1.3.0-rc13');
+test('stable version constant promoted', MG_SAOLUU_VERSION === '1.3.0');
+test('stable production full restore capability is explicit', mg_saoluu_production_full_restore_enabled() === true);
 test('self-integrity cache does not create DB transient',
     !array_filter(array_keys($GLOBALS['test_transients']), static fn($k)=>str_contains((string)$k,'self_integrity')));
 
@@ -172,6 +175,42 @@ file_put_contents($restore_stage . '/wp-content/uploads/ordinary.txt', 'ordinary
 $ordinary_copy = mg_saoluu_copy_stage_files($restore_stage, 'safe_full');
 test('ordinary restore destination passes', $ordinary_copy === true && file_get_contents($restore_target_dir . '/ordinary.txt') === 'ordinary-content');
 @unlink($restore_target_dir . '/ordinary.txt');
+
+// Full Site Restore must mirror the backup snapshot, not merely copy on top.
+// Managed target files absent from the snapshot are pruned; explicit exclusions remain.
+$snapshot_stage = $root . '/snapshot-stage';
+wp_mkdir_p($snapshot_stage . '/wp-content/uploads');
+file_put_contents($snapshot_stage . '/wp-content/uploads/keep.txt', 'snapshot-keep');
+file_put_contents($restore_target_dir . '/keep.txt', 'target-drift');
+file_put_contents($restore_target_dir . '/introduced-before-restore.txt', 'must-be-pruned');
+file_put_contents(ABSPATH . 'wp-config.php', 'protected-config');
+$snapshot_extra = mg_saoluu_restore_snapshot_extra_files($snapshot_stage, 'safe_full');
+test('full restore detects managed files absent from snapshot',
+    is_array($snapshot_extra)
+    && in_array('wp-content/uploads/introduced-before-restore.txt', $snapshot_extra, true)
+    && !in_array('wp-content/uploads/keep.txt', $snapshot_extra, true)
+    && !in_array('wp-config.php', $snapshot_extra, true));
+$snapshot_prune = mg_saoluu_remove_new_restore_files($snapshot_extra, null, 'safe_full');
+test('full restore prunes file absent from snapshot and preserves exclusions',
+    $snapshot_prune['requested'] === 1
+    && $snapshot_prune['removed'] === 1
+    && $snapshot_prune['failed'] === 0
+    && !file_exists($restore_target_dir . '/introduced-before-restore.txt')
+    && file_get_contents($restore_target_dir . '/keep.txt') === 'target-drift'
+    && file_get_contents(ABSPATH . 'wp-config.php') === 'protected-config');
+$snapshot_remaining = mg_saoluu_restore_snapshot_extra_files($snapshot_stage, 'safe_full');
+test('snapshot prune leaves no managed extra files', is_array($snapshot_remaining) && $snapshot_remaining === []);
+@unlink($restore_target_dir . '/keep.txt');
+@unlink(ABSPATH . 'wp-config.php');
+
+$snapshot_link = $restore_target_dir . '/snapshot-extra-link.txt';
+symlink($outside_sentinel, $snapshot_link);
+$snapshot_link_scan = mg_saoluu_restore_snapshot_extra_files($snapshot_stage, 'safe_full');
+test('snapshot prune fails closed on managed target symlink',
+    is_wp_error($snapshot_link_scan)
+    && $snapshot_link_scan->get_error_code() === 'restore_snapshot_target_symlink'
+    && file_get_contents($outside_sentinel) === 'SENTINEL-ORIGINAL');
+@unlink($snapshot_link);
 
 // A full backup may contain an older MG Sao Luu copy, but restore must never
 // overwrite the plugin code currently executing the transaction.
@@ -586,10 +625,10 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// RC13 deliberately keeps every Production Restore path hard-blocked while Pack
-// behavior is being accepted on an isolated clone/staging target.
-test('RC13 keeps production restore hard-block active',
-    str_contains(MG_SAOLUU_VERSION, '-rc'));
+// Stable opens only guarded Full Site Restore. Pack Restore remains blocked
+// independently at action + engine level and is covered by static UI contracts.
+test('stable is not an RC rename gate',
+    strpos(MG_SAOLUU_VERSION, '-rc') === false && MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE === true);
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 
 // WordPress-independent AES-GCM decryption: binary roundtrip + wrong-key block.

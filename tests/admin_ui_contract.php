@@ -98,9 +98,9 @@ $restore_pos = strpos($actions, "if (\$action === 'restore_zip_upload')");
 $verify_block = ($verify_pos !== false && $backup_pos !== false && $backup_pos > $verify_pos)
     ? substr($actions, $verify_pos, $backup_pos - $verify_pos)
     : '';
-ui_check('Production-visible ZIP upload uses verify-only action before restore action',
+ui_check('Production-visible verify-only upload remains non-destructive',
     str_contains($render, 'name="mg_action" value="verify_restore_upload"')
-    && str_contains($render, 'Production RC13 chỉ xác minh file')
+    && str_contains($render, 'Bước 1 · Xác minh file trước.')
     && $verify_pos !== false && $restore_pos !== false && $verify_pos < $restore_pos
     && str_contains($verify_block, 'mg_saoluu_verify_uploaded_backup_for_current_site($staged, $password)')
     && str_contains($verify_block, '@unlink($staged)')
@@ -114,5 +114,46 @@ ui_check('uploaded backup verification is same-host fail-closed on Production',
     && str_contains($restore_src, "'upload_verify_environment'")
     && str_contains($restore_src, "'upload_verify_prefix'")
     && str_contains($restore_src, "'upload_verify_signature'"));
+
+$security = src($plugin, 'includes/security.php');
+$main = src($plugin, 'mg-saoluu.php');
+
+ui_check('stable production restore requires explicit capability beyond version text',
+    str_contains($main, "define('MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE', true)")
+    && str_contains($lifecycle, 'function mg_saoluu_production_full_restore_enabled()')
+    && str_contains($lifecycle, "strpos(MG_SAOLUU_VERSION, '-rc') === false")
+    && str_contains($actions, '!mg_saoluu_production_full_restore_enabled()')
+    && str_contains($restore_src, '!mg_saoluu_production_full_restore_enabled()'));
+
+ui_check('security challenge sign apply and unlock info are capability-gated',
+    substr_count($security, '!mg_saoluu_production_full_restore_enabled()') >= 4
+    && str_contains($security, "'production_restore_disabled'"));
+
+ui_check('production Pack Restore is hard-blocked at action UI and engine',
+    substr_count($actions, "Pack Restore vẫn bị khóa trên Production") >= 2
+    && str_contains($packs, "if (mg_saoluu_environment() === 'production')")
+    && str_contains($packs, "'production_pack_restore_disabled'")
+    && str_contains($render, 'Pack Restore bị khóa trên Production kể cả Stable 1.3.0'));
+
+ui_check('stable Production Full Site upload requires temporary unlock and sensitive confirmation',
+    str_contains($render, 'Upload & Restore Production')
+    && str_contains($render, 'name="admin_password"')
+    && str_contains($render, 'name="restore_host"')
+    && str_contains($render, 'name="restore_phrase"')
+    && str_contains($render, '!$production_unlocked')
+    && str_contains($actions, "mg_saoluu_security_sensitive_confirmation(")
+    && str_contains($actions, "mg_saoluu_check_restore_confirmation("));
+
+ui_check('Production Full Site upload cannot silently fall back to database-only mode',
+    str_contains($render, 'Phạm vi Restore')
+    && str_contains($render, 'Database + files (Full Site)')
+    && str_contains($render, 'type="hidden" name="restore_mode" value="files_database"'));
+
+ui_check('Production restore forces URL rewrite off server-side',
+    substr_count($actions, "mg_saoluu_environment() === 'production' ? false : isset(\$_POST['change_url'])") >= 2
+    && str_contains($render, 'bị khóa trên web thật'));
+
+ui_check('version upgrade revokes any inherited Production Restore unlock',
+    str_contains($lifecycle, "delete_transient('mg_saoluu_production_restore_unlocked')"));
 
 echo "ADMIN UI TESTS $count/$count PASS\n";

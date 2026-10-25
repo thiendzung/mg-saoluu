@@ -416,6 +416,7 @@ function mg_saoluu_restore_target_settings($settings) {
 
 function mg_saoluu_production_unlocked() {
     if (mg_saoluu_environment() !== 'production') return true;
+    if (!mg_saoluu_production_full_restore_enabled()) return false;
     $info = mg_saoluu_security_restore_unlock_info();
     return !empty($info['active']);
 }
@@ -657,13 +658,55 @@ function mg_saoluu_stage_new_files($stage_dir) {
     return $new;
 }
 
-function mg_saoluu_remove_new_restore_files($relative_files, $unlink = null) {
+function mg_saoluu_restore_snapshot_extra_files($stage_dir, $backup_type) {
+    $scope = $backup_type === 'local_copy' ? 'local_copy' : 'safe_full';
+    $snapshot = [];
+    $stage_root = trailingslashit(wp_normalize_path($stage_dir));
+    try {
+        $stage_iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($stage_dir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::LEAVES_ONLY
+        );
+        foreach ($stage_iterator as $file) {
+            if ($file->isLink()) return new WP_Error('restore_snapshot_stage_symlink', 'Snapshot tạm chứa symbolic link; đã dừng.');
+            if (!$file->isFile()) continue;
+            $path = wp_normalize_path($file->getPathname());
+            $relative = ltrim(substr($path, strlen($stage_root)), '/');
+            if (in_array($relative, ['database_backup.sql', 'mg-backup-manifest.json'], true)) continue;
+            if ($relative === '' || mg_saoluu_is_runtime_self_path($relative) || mg_saoluu_is_excluded_path($relative, $scope)) continue;
+            $snapshot[$relative] = true;
+        }
+
+        $root = trailingslashit(wp_normalize_path(ABSPATH));
+        $target_iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(ABSPATH, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::LEAVES_ONLY
+        );
+        $extra = [];
+        foreach ($target_iterator as $file) {
+            $path = wp_normalize_path($file->getPathname());
+            if (strpos($path, $root) !== 0) return new WP_Error('restore_snapshot_outside', 'Phát hiện file đích ngoài WordPress root; đã dừng.');
+            $relative = ltrim(substr($path, strlen($root)), '/');
+            if ($relative === '' || mg_saoluu_is_runtime_self_path($relative) || mg_saoluu_is_excluded_path($relative, $scope)) continue;
+            if ($file->isLink()) return new WP_Error('restore_snapshot_target_symlink', 'Phát hiện symbolic link trong scope Full Site Restore; đã dừng để tránh xóa nhầm.');
+            if (!$file->isFile()) continue;
+            if (!isset($snapshot[$relative])) $extra[] = $relative;
+        }
+        sort($extra, SORT_STRING);
+        return $extra;
+    } catch (Throwable $e) {
+        return new WP_Error('restore_snapshot_scan_failed', 'Không đối chiếu được file website với snapshot; đã dừng.');
+    }
+}
+
+function mg_saoluu_remove_new_restore_files($relative_files, $unlink = null, $backup_type = 'safe_full') {
     $result = ['requested' => 0, 'removed' => 0, 'already_absent' => 0, 'failed' => 0];
     $unlink = is_callable($unlink) ? $unlink : static function ($target) { return @unlink($target); };
     foreach ((array) $relative_files as $relative) {
         $result['requested']++;
         $relative = ltrim(str_replace('\\', '/', (string) $relative), '/');
-        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_runtime_self_path($relative) || mg_saoluu_is_excluded_path($relative, 'safe_full')) {
+        $scope = $backup_type === 'local_copy' ? 'local_copy' : 'safe_full';
+        if (!mg_saoluu_is_safe_zip_entry($relative) || mg_saoluu_is_runtime_self_path($relative) || mg_saoluu_is_excluded_path($relative, $scope)) {
             $result['failed']++;
             continue;
         }
@@ -778,9 +821,10 @@ function mg_saoluu_backup_prefix_preflight($manifest, $target_prefix, $cross_sit
 }
 
 function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true, $password = '') {
-    // RC builds may create backups on production, but must never overwrite a live DB.
-    if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-        return new WP_Error('rc_production_restore_disabled', 'Bản RC chỉ được restore trên clone. Dùng Recovery Runbook độc lập khi cần cứu site production.');
+    // Production Restore is enabled only by an explicit stable-build capability.
+    // A version rename/tag alone cannot authorize writes to a live database.
+    if (mg_saoluu_environment() === 'production' && !mg_saoluu_production_full_restore_enabled()) {
+        return new WP_Error('production_restore_disabled', 'Build này chưa được phép Full Site Restore trên Production. Dùng Recovery Runbook nếu cần cứu site.');
     }
     if (mg_saoluu_restore_journal_unfinished(mg_saoluu_restore_journal())) {
         return new WP_Error('restore_unfinished', 'Phát hiện lần restore trước chưa hoàn tất. Không ghi tiếp database; kiểm tra checkpoint và Recovery Runbook.');
@@ -868,9 +912,12 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
     if (is_wp_error($extract)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $extract; }
     $new_files = $restore_files ? mg_saoluu_stage_new_files($stage) : [];
     if (is_wp_error($new_files)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $new_files; }
+    $snapshot_extra_preflight = [];
     if ($restore_files) {
         $destinations = mg_saoluu_validate_restore_destinations($stage, $type);
         if (is_wp_error($destinations)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $destinations; }
+        $snapshot_extra_preflight = mg_saoluu_restore_snapshot_extra_files($stage, $type);
+        if (is_wp_error($snapshot_extra_preflight)) { mg_saoluu_remove_tree($stage); if ($prepared['temporary']) @unlink($zip_file); return $snapshot_extra_preflight; }
     }
 
     $target_settings = mg_saoluu_capture_target_settings();
@@ -885,6 +932,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         'restore_files' => (bool) $restore_files,
         'new_file_count' => count($new_files),
         'new_files' => $new_files,
+        'snapshot_extra_preflight_count' => count($snapshot_extra_preflight),
         'started_at' => current_time('mysql'),
         'started_at_epoch' => time(),
     ];
@@ -932,6 +980,21 @@ function mg_saoluu_restore_zip($backup_file, $restore_files, $change_url = true,
         if ($restore_files) {
             $copy = mg_saoluu_copy_stage_files($stage, $type);
             if (is_wp_error($copy)) throw new RuntimeException($copy->get_error_message());
+
+            // Full-file restore is snapshot semantics, not copy-on-top semantics.
+            // Remove managed files that exist on the target but not in the backup,
+            // while preserving explicit exclusions and the currently executing plugin.
+            $snapshot_extra = mg_saoluu_restore_snapshot_extra_files($stage, $type);
+            if (is_wp_error($snapshot_extra)) throw new RuntimeException($snapshot_extra->get_error_message());
+            $snapshot_prune = mg_saoluu_remove_new_restore_files($snapshot_extra, null, $type);
+            $journal['snapshot_prune'] = $snapshot_prune;
+            if (($snapshot_prune['failed'] ?? 0) > 0) throw new RuntimeException('Không thể dọn hết file nằm ngoài snapshot backup.');
+
+            $snapshot_remaining = mg_saoluu_restore_snapshot_extra_files($stage, $type);
+            if (is_wp_error($snapshot_remaining)) throw new RuntimeException($snapshot_remaining->get_error_message());
+            $journal['snapshot_remaining_count'] = count($snapshot_remaining);
+            if ($snapshot_remaining) throw new RuntimeException('Website vẫn còn file ngoài snapshot sau bước dọn; đã dừng để tự rollback.');
+
             $journal['status'] = 'files_copied';
             $journal_saved = mg_saoluu_restore_journal($journal);
             if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());

@@ -701,11 +701,11 @@ function mg_saoluu_pack_schedule_worker_launch($php, $worker, $job_file, $journa
 }
 
 function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token = '') {
+    if (mg_saoluu_environment() === 'production') {
+        return new WP_Error('production_pack_restore_disabled', 'Pack Restore bị khóa trên Production. Chỉ Full Site Restore cùng-host đã được phê duyệt mới được phép.');
+    }
     if (!mg_saoluu_find_binary('mysql') || !mg_saoluu_find_binary('mysqldump')) {
         return new WP_Error('pack_cli_missing', 'Pack Restore cần mysql và mysqldump/mariadb-dump CLI.');
-    }
-    if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-        return new WP_Error('rc_production_restore_disabled', 'RC12 chỉ test Pack Restore trên clone/staging.');
     }
 
     $prepared = mg_saoluu_pack_prepare_zip($backup_file, $password);

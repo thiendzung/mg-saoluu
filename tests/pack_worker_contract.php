@@ -67,6 +67,11 @@ wt('RC9 worker launch is synchronous shutdown execution',
 wt('worker no longer acquires a second global flock',
     !str_contains($src, "global_lock") && !str_contains($src, "flock("));
 
+wt('worker canonicalizes work-dir parent paths before containment checks',
+    str_contains($src, 'function mgw_path_parent_is_work')
+    && str_contains($src, 'realpath(dirname($path))')
+    && !str_contains($src, 'dirname($journal) !== $work'));
+
 wt('worker uses pack-aware logical Settings hash',
     str_contains($src, 'function mgw_state_hash_line')
     && str_contains($src, '<OPTION_ID>')
