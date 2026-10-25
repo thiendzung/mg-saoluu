@@ -76,9 +76,9 @@ function mg_saoluu_find_binary($type, $force = false) {
     if ($configured && mg_saoluu_path_is_executable($configured)) return $configured;
 
     if (!$force && array_key_exists($type, $runtime)) return $runtime[$type];
-    $cache_key = 'mg_saoluu_binary_' . $type;
+    $cache_key = 'binary_' . $type;
     if (!$force) {
-        $cached = get_transient($cache_key);
+        $cached = wp_cache_get($cache_key, 'mg_saoluu');
         if ($cached === '__missing__') return $runtime[$type] = '';
         if (is_string($cached) && $cached !== '' && mg_saoluu_path_is_executable($cached)) {
             return $runtime[$type] = $cached;
@@ -89,7 +89,7 @@ function mg_saoluu_find_binary($type, $force = false) {
     foreach (mg_saoluu_binary_candidates($type) as $candidate) {
         if (mg_saoluu_path_is_executable($candidate)) { $found = $candidate; break; }
     }
-    set_transient($cache_key, $found !== '' ? $found : '__missing__', 10 * MINUTE_IN_SECONDS);
+    wp_cache_set($cache_key, $found !== '' ? $found : '__missing__', 'mg_saoluu', 10 * MINUTE_IN_SECONDS);
     return $runtime[$type] = $found;
 }
 
