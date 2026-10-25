@@ -68,6 +68,59 @@ function mg_saoluu_stage_upload($file, $extension) {
     return $target;
 }
 
+/**
+ * Verify an uploaded backup without restoring it or adding it to the catalog.
+ * Production additionally requires same-host/same-prefix provenance.
+ */
+function mg_saoluu_verify_uploaded_backup_for_current_site($path, $password = '') {
+    $path = (string) $path;
+    if ($path === '' || is_link($path) || !is_file($path) || !is_readable($path)) {
+        return new WP_Error('upload_verify_missing', 'Không đọc được file upload để xác minh.');
+    }
+    $digest = @hash_file('sha256', $path);
+    if (!$digest) return new WP_Error('upload_verify_hash', 'Không tính được SHA-256 của file upload.');
+
+    $is_pack = function_exists('mg_saoluu_is_pack_backup') && mg_saoluu_is_pack_backup($path);
+    if ($is_pack) {
+        $manifest = mg_saoluu_verify_pack_backup($path, $password);
+        if (is_wp_error($manifest)) return $manifest;
+        $authenticated = true; // Pack v2 AEAD + pack.sql SHA verified.
+        $kind = 'pack';
+    } else {
+        $manifest = mg_saoluu_read_backup_manifest($path, $password);
+        if (is_wp_error($manifest)) return $manifest;
+        $authenticated = mg_saoluu_verify_manifest_signature($manifest);
+        $kind = 'stable';
+    }
+
+    $source_host = strtolower((string) ($manifest['source_host'] ?? ''));
+    $source_env = sanitize_key((string) ($manifest['source_environment'] ?? ''));
+    $source_prefix = (string) ($manifest['db_table_prefix'] ?? '');
+    if (mg_saoluu_environment() === 'production') {
+        if ($source_host === '' || $source_host !== strtolower(mg_saoluu_host())) {
+            return new WP_Error('upload_verify_host', 'File không phải backup của đúng host Production hiện tại.');
+        }
+        if ($source_env !== 'production') {
+            return new WP_Error('upload_verify_environment', 'File không được tạo từ môi trường Production của website này.');
+        }
+        global $wpdb;
+        if ($source_prefix === '' || $source_prefix !== (string) $wpdb->prefix) {
+            return new WP_Error('upload_verify_prefix', 'DB prefix trong backup không khớp Production hiện tại.');
+        }
+        if ($kind === 'stable' && !$authenticated) {
+            return new WP_Error('upload_verify_signature', 'Backup Stable không có chữ ký hợp lệ của website Production hiện tại.');
+        }
+    }
+
+    return [
+        'kind' => $kind,
+        'sha256' => strtolower((string) $digest),
+        'size' => (int) @filesize($path),
+        'authenticated' => (bool) $authenticated,
+        'manifest' => $manifest,
+    ];
+}
+
 function mg_saoluu_make_temp_dir($prefix = 'mg-restore-') {
     $private_temp = mg_saoluu_private_temp_dir();
     if (is_wp_error($private_temp)) return $private_temp;

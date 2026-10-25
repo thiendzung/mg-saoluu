@@ -5,7 +5,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     if (!current_user_can('manage_options')) wp_die('Bạn không có quyền thực hiện.');
     check_admin_referer('mg_saoluu_secure', 'mg_nonce');
     $action = sanitize_key(wp_unslash($_POST['mg_action']));
-    if (in_array($action,['backup','pack_backup','pack_restore','pack_restore_upload','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
+    if (in_array($action,['backup','pack_backup','pack_restore','pack_restore_upload','verify_restore_upload','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
 
     // v1.2.1 concentrates on BACKUP/RESTORE. Existing transfer and deploy
     // implementation/options remain on disk for a future migration, but no
@@ -473,6 +473,37 @@ function mg_saoluu_handle_actions(&$message, &$status) {
                 ]);
                 $status='success';
                 $message='Đã xác minh Pack và xếp Restore worker tối giản. Job ' . ($result['job_id'] ?? '') . ' sẽ chạy sau khi WordPress kết thúc request; mở lại tab Khôi phục để xem hậu kiểm.';
+            }
+            return;
+        }
+
+        if ($action === 'verify_restore_upload') {
+            $self = mg_saoluu_self_integrity();
+            if (empty($self['ok'])) {
+                $status='error'; $message='Đã chặn xác minh upload vì integrity plugin không đạt.'; return;
+            }
+            $max = min((int) wp_max_upload_size(), 2 * 1024 * 1024 * 1024);
+            $file = $_FILES['zip_file'] ?? [];
+            $valid = mg_saoluu_validate_backup_upload($file, $max);
+            if (is_wp_error($valid)) { $status='error'; $message=$valid->get_error_message(); return; }
+            $extension = strtolower(pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+            $staged = mg_saoluu_stage_upload($file, $extension);
+            if (is_wp_error($staged)) { $status='error'; $message=$staged->get_error_message(); return; }
+            try {
+                $password = (string) wp_unslash($_POST['backup_password'] ?? '');
+                $result = mg_saoluu_verify_uploaded_backup_for_current_site($staged, $password);
+                if (is_wp_error($result)) {
+                    $status='error'; $message=$result->get_error_message(); return;
+                }
+                $label = ($result['kind'] ?? '') === 'pack' ? 'Pack v2' : 'Backup Stable';
+                mg_saoluu_log_event('restore_upload_verified', 'Đã xác minh file upload không ghi dữ liệu', [
+                    'kind'=>$result['kind'] ?? '',
+                    'sha256'=>$result['sha256'] ?? '',
+                ]);
+                $status='success';
+                $message='Đã xác minh ' . $label . ' từ máy. SHA-256: ' . ($result['sha256'] ?? '') . '. Chưa Restore và chưa ghi dữ liệu website.';
+            } finally {
+                if (is_string($staged) && is_file($staged) && !is_link($staged)) @unlink($staged);
             }
             return;
         }

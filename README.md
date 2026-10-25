@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.3.0-rc12 — logical Settings Pack verification
+# MG Sao Lưu v1.3.0-rc13 — restore upload UX + verify-only Production
 
 WordPress Backup → Verify → Store → Restore. Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 
@@ -61,3 +61,7 @@ Settings Pack excludes volatile WordPress runtime rows (`cron`, `rewrite_rules`,
 
 ## RC12: logical Settings hash
 Settings Pack post-verify now hashes durable option rows by logical content (`option_name`, `option_value`, `autoload`) rather than physical `option_id` or primary-key row order. The dump uses one row per statement for deterministic normalization. Fresh RC12 Settings Packs are required for Restore; RC11 Pack fingerprints are intentionally rejected. The RC11 oversized upload gate remains unchanged.
+
+
+## RC13: Restore upload UX
+Restore now has real drag-and-drop file inputs. Pack v2 accepts `.mgbackup`; Full Site accepts `.zip` or `.mgbackup`. On Production, RC13 exposes Full Site upload only as a non-destructive verification path: it validates upload limits/type, archive integrity, manifest/source identity and SHA-256, then deletes the staged file. It does not call Restore or Import. Local/Staging retain the existing guarded restore path.

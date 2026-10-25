@@ -1,3 +1,12 @@
+## 1.3.0-rc13 — Restore upload UX + Production verify-only (2026-10-25)
+
+- Add real drag-and-drop for Restore upload boxes with selected-file feedback.
+- Client-side upload validation now checks both effective PHP size limit and allowed file extensions.
+- Pack v2 upload remains `.mgbackup` only.
+- Full Site upload accepts `.zip` or `.mgbackup`.
+- Production now shows Full Site upload as **verify-only**: validate file, hash, manifest/source host/prefix and signature where applicable, then remove the temporary upload.
+- Production RC Restore/Import remains hard-blocked; the new verify-only action never calls the Restore engine.
+
 ## 1.3.0-rc12 — Logical Settings state hash (2026-10-25)
 
 - Settings Pack state verification no longer depends on physical `wp_options.option_id` values.
