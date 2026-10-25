@@ -17,11 +17,6 @@ function mg_saoluu_pack_registry() {
             'description' => 'Posts/Pages/CPT + post meta + taxonomy + comments.',
             'mode' => 'tables',
         ],
-        'users' => [
-            'label' => 'Người dùng',
-            'description' => 'Users + user meta.',
-            'mode' => 'tables',
-        ],
         'full_db' => [
             'label' => 'Toàn bộ database',
             'description' => 'Toàn bộ DB bằng mysqldump native.',
@@ -52,7 +47,6 @@ function mg_saoluu_pack_tables($pack) {
             $wpdb->commentmeta,
         ];
     }
-    if ($pack === 'users') return [$wpdb->users, $wpdb->usermeta];
     if ($pack === 'full_db') return [];
     return new WP_Error('pack_invalid', 'Pack backup không hợp lệ.');
 }
@@ -303,8 +297,8 @@ function mg_saoluu_create_pack_backup($pack, $note = '', $password = '', $apply_
     if (!mg_saoluu_pack_crypto_available()) return new WP_Error('pack_crypto_missing', 'Pack v2 cần PHP Sodium.');
     $safe = mg_saoluu_storage_preflight();
     if (is_wp_error($safe)) return $safe;
-    if (!mg_saoluu_find_binary('mysqldump') || !mg_saoluu_find_binary('mysql')) {
-        return new WP_Error('pack_cli_missing', 'Pack Backup/Restore cần mysqldump và mysql/mariadb native.');
+    if (!mg_saoluu_find_binary('mysqldump')) {
+        return new WP_Error('pack_cli_missing', 'Pack Backup cần mysqldump/mariadb-dump native.');
     }
     $password = mg_saoluu_encryption_password($password);
     if ($password === '') return new WP_Error('pack_key_missing', 'Không có Recovery Key để mã hóa Pack.');
@@ -432,6 +426,7 @@ function mg_saoluu_pack_extract_sql($zip_file, $manifest) {
 }
 
 function mg_saoluu_restore_pack_internal($backup_file, $password, $with_checkpoint = true) {
+    if (!mg_saoluu_find_binary('mysql')) return new WP_Error('mysql_required', 'Pack Restore cần mysql/mariadb CLI native.');
     if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
         return new WP_Error('rc_production_restore_disabled', 'RC7 chỉ test Pack Restore trên clone/staging.');
     }
