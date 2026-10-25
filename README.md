@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.3.0-rc10 — RC9 restore core + admin UX
+# MG Sao Lưu v1.3.0-rc11 — RC10 UX + focused Pack remediation
 
 WordPress Backup → Verify → Store → Restore. Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 
@@ -53,3 +53,7 @@ Pack Restore không import DB trong request WordPress. Request chỉ verify/pref
 ## RC10: Admin UI + Restore từ máy
 
 RC10 giữ nguyên worker/state-hash/rollback đã PASS ở RC9. Thay đổi chỉ ở lớp UX: admin assets dùng hook suffix thật + filemtime cache busting + critical CSS fallback; Restore Pack có hai nguồn **Bản đã lưu** hoặc **Upload từ máy**. Upload local bị giới hạn bởi `wp_max_upload_size()` và hard cap 2 GiB, được chuyển bằng `move_uploaded_file()` vào private temp `0600`, kiểm magic Pack v2 rồi đi vào cùng RC9 restore engine. File upload tạm bị xóa sau khi stage job.
+
+
+## RC11: focused remediation
+Settings Pack excludes volatile WordPress runtime rows (`cron`, `rewrite_rules`, updater locks) from both backup and post-verify scope so local-upload Restore can compare durable settings deterministically. Oversized local files now immediately show a warning and disable the Restore submit button; server-side limits remain authoritative.
