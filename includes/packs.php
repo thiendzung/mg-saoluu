@@ -540,29 +540,57 @@ function mg_saoluu_pack_latest_job_status() {
     if (!$files) return [];
     usort($files, static function($a, $b){ return @filemtime($b) <=> @filemtime($a); });
     $data = mg_saoluu_read_metadata($files[0]);
-    return is_array($data) ? $data : [];
+    if (!is_array($data)) return [];
+    if (($data['status'] ?? '') === 'queued') {
+        $updated = isset($data['updated_at']) ? strtotime((string) $data['updated_at']) : false;
+        if ($updated && time() - $updated > 300) {
+            $data['status'] = 'worker_launch_failed_stale';
+            $data['error_code'] = 'worker_launch_failed_stale';
+        }
+    }
+    return $data;
+}
+
+function mg_saoluu_pack_cleanup_failed_launch($job_file) {
+    $job = mg_saoluu_read_metadata($job_file);
+    if (is_array($job)) {
+        foreach (['mysql_config', 'target_sql'] as $key) {
+            $path = (string) ($job[$key] ?? '');
+            if ($path !== '' && is_file($path) && !is_link($path)) @unlink($path);
+        }
+    }
+    if (is_file($job_file) && !is_link($job_file)) @unlink($job_file);
 }
 
 function mg_saoluu_pack_schedule_worker_launch($php, $worker, $job_file, $journal) {
     if (!mg_saoluu_exec_available()) return new WP_Error('pack_worker_exec', 'Hosting đã tắt exec nên không thể chạy worker Restore an toàn.');
     if (!mg_saoluu_path_is_executable($php) || !is_file($worker) || !is_readable($worker)) return new WP_Error('pack_worker_missing', 'Không tìm thấy PHP CLI worker.');
-    $nohup = mg_saoluu_command_path('nohup');
-    $prefix = $nohup !== '' ? escapeshellarg($nohup) . ' ' : '';
-    $cmd = $prefix
-        . escapeshellarg($php) . ' '
-        . escapeshellarg($worker) . ' '
-        . escapeshellarg($job_file)
-        . ' > /dev/null 2>&1 < /dev/null &';
-    $out = []; $status = 1;
-    @exec($cmd, $out, $status);
-    if ($status !== 0) {
-        mg_saoluu_pack_write_private_json($journal, [
-            'status' => 'worker_launch_failed',
-            'error_code' => 'worker_launch_failed',
-            'updated_at' => gmdate('c'),
-        ]);
-        return new WP_Error('worker_launch_failed', 'Không khởi chạy được Restore worker.');
-    }
+
+    add_action('shutdown', static function() use ($php, $worker, $job_file, $journal) {
+        // Register the actual CLI invocation from inside WordPress shutdown so it
+        // is appended to PHP's shutdown queue after callbacks already registered.
+        register_shutdown_function(static function() use ($php, $worker, $job_file, $journal) {
+            $cmd = escapeshellarg($php) . ' ' . escapeshellarg($worker) . ' ' . escapeshellarg($job_file);
+            $out = []; $status = 1;
+            @exec($cmd, $out, $status);
+            if ($status !== 0) {
+                $state = mg_saoluu_read_metadata($journal);
+                $terminal = is_array($state) ? (string) ($state['status'] ?? '') : '';
+                if ($terminal === '' || $terminal === 'queued') {
+                    mg_saoluu_pack_write_private_json($journal, [
+                        'status' => 'worker_launch_failed',
+                        'error_code' => 'worker_launch_failed',
+                        'updated_at' => gmdate('c'),
+                    ]);
+                    mg_saoluu_pack_cleanup_failed_launch($job_file);
+                }
+            }
+        });
+
+        ignore_user_abort(true);
+        if (function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
+    }, PHP_INT_MAX);
+
     return true;
 }
 
@@ -571,7 +599,7 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
         return new WP_Error('pack_cli_missing', 'Pack Restore cần mysql và mysqldump/mariadb-dump CLI.');
     }
     if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-        return new WP_Error('rc_production_restore_disabled', 'RC8 chỉ test Pack Restore trên clone/staging.');
+        return new WP_Error('rc_production_restore_disabled', 'RC9 chỉ test Pack Restore trên clone/staging.');
     }
 
     $prepared = mg_saoluu_pack_prepare_zip($backup_file, $password);
@@ -581,7 +609,7 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
     if (!mg_saoluu_pack_definition($pack)) { @unlink($prepared['zip']); return new WP_Error('pack_invalid', 'Pack không được hỗ trợ.'); }
     if ((int) ($manifest['version'] ?? 0) < 2 || !preg_match('/^[a-f0-9]{64}$/', (string) ($manifest['state_hash'] ?? ''))) {
         @unlink($prepared['zip']);
-        return new WP_Error('pack_post_verify_missing', 'Pack cũ không có state hash hậu kiểm; RC8 chỉ Verify, không Restore file này.');
+        return new WP_Error('pack_post_verify_missing', 'Pack cũ không có state hash hậu kiểm; RC9 chỉ Verify, không Restore file này.');
     }
     if (strtolower((string) ($manifest['source_host'] ?? '')) !== strtolower(mg_saoluu_host())) {
         @unlink($prepared['zip']);
