@@ -342,3 +342,110 @@
 .mgsl-operation-pending::before { content:'◌'; display:inline-block; margin-right:8px; animation:mgsl-spin 1.4s linear infinite; }
 @keyframes mgsl-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .mgsl-operation-pending::before { animation:none; } }
+
+
+/* RC10 — simpler restore sources + production-safe admin polish */
+.mgsl-wrap {
+    width:calc(100% - 20px);
+}
+.mgsl-card {
+    overflow:hidden;
+}
+.mgsl-restore-source-grid {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:16px;
+    margin-top:16px;
+}
+.mgsl-source-card {
+    border:1px solid #dcdcde;
+    border-radius:12px;
+    padding:18px;
+    background:#fbfbfc;
+    min-width:0;
+}
+.mgsl-source-card h3 {
+    margin:0 0 6px;
+    font-size:16px;
+}
+.mgsl-source-card form {
+    margin-top:14px;
+}
+.mgsl-empty {
+    padding:16px;
+    border:1px dashed #c3c4c7;
+    border-radius:9px;
+    color:#646970;
+    background:#fff;
+}
+.mgsl-upload-limit {
+    display:inline-block;
+    margin:4px 0 12px;
+    padding:5px 9px;
+    border-radius:999px;
+    background:#eef6ff;
+    color:#135e96;
+    font-size:12px;
+}
+.mgsl-upload-box {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    min-height:132px;
+    margin-bottom:16px;
+    padding:18px;
+    border:1.5px dashed #8c8f94;
+    border-radius:11px;
+    background:#fff;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease,background .15s ease,box-shadow .15s ease;
+}
+.mgsl-upload-box:hover,
+.mgsl-upload-box:focus-within {
+    border-color:#2271b1;
+    background:#f6fbff;
+    box-shadow:0 0 0 1px rgba(34,113,177,.08);
+}
+.mgsl-upload-box .dashicons {
+    width:28px;
+    height:28px;
+    font-size:28px;
+    color:#2271b1;
+}
+.mgsl-upload-box small {
+    color:#646970;
+}
+.mgsl-upload-box input[type=file] {
+    width:100%;
+    max-width:360px;
+    margin-top:8px;
+}
+.mgsl-operation-pending {
+    margin:12px 0 0;
+    padding:9px 11px;
+    border-radius:7px;
+    background:#eef6ff;
+    color:#135e96;
+    font-weight:600;
+}
+@media(max-width:900px) {
+    .mgsl-restore-source-grid {
+        grid-template-columns:1fr;
+    }
+}
+@media(max-width:782px) {
+    .mgsl-wrap {
+        width:auto;
+        margin-right:10px;
+    }
+    .mgsl-card,.mgsl-source-card {
+        padding:15px;
+        border-radius:10px;
+    }
+    .mgsl-upload-box {
+        min-height:110px;
+    }
+}
