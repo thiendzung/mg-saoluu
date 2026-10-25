@@ -566,7 +566,7 @@ function mg_saoluu_pack_schedule_worker_launch($php, $worker, $job_file, $journa
     return true;
 }
 
-function mg_saoluu_restore_pack($backup_file, $password) {
+function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token = '') {
     if (!mg_saoluu_find_binary('mysql') || !mg_saoluu_find_binary('mysqldump')) {
         return new WP_Error('pack_cli_missing', 'Pack Restore cần mysql và mysqldump/mariadb-dump CLI.');
     }
@@ -679,8 +679,16 @@ function mg_saoluu_restore_pack($backup_file, $password) {
     ]);
     if (is_wp_error($queued)) { @unlink($job_file); @unlink($job_config); @unlink($target_sql); return $queued; }
 
+    if (!mg_saoluu_defer_lock_release($operation_lock_token)) {
+        @unlink($job_file); @unlink($job_config); @unlink($target_sql);
+        return new WP_Error('pack_lock_handoff', 'Không thể giữ khóa Backup/Restore tới khi worker bắt đầu.');
+    }
     $scheduled = mg_saoluu_pack_schedule_worker_launch($php, MG_SAOLUU_DIR . 'bin/pack-restore-worker.php', $job_file, $journal);
-    if (is_wp_error($scheduled)) { @unlink($job_file); @unlink($job_config); @unlink($target_sql); return $scheduled; }
+    if (is_wp_error($scheduled)) {
+        mg_saoluu_cancel_deferred_lock($operation_lock_token);
+        @unlink($job_file); @unlink($job_config); @unlink($target_sql);
+        return $scheduled;
+    }
 
     return [
         'operation' => 'queued',
