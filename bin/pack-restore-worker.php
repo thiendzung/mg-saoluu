@@ -41,6 +41,11 @@ function mgw_safe_file($path, $must_exist = true) {
     if ($must_exist && (!is_file($path) || !is_readable($path))) return false;
     return true;
 }
+function mgw_path_parent_is_work($path, $work) {
+    if (!is_string($path) || $path === '' || strpos($path, "\0") !== false) return false;
+    $parent = realpath(dirname($path));
+    return is_string($parent) && $parent !== '' && hash_equals($work, $parent);
+}
 function mgw_run_dump($job, $output) {
     $binary = (string)$job['mysqldump_binary'];
     $config = (string)$job['mysql_config'];
@@ -173,7 +178,11 @@ foreach ($required as $key) if (!array_key_exists($key, $job)) mgw_fail('Missing
 $work = realpath((string)$job['work_dir']);
 if (!$work || !is_dir($work) || is_link($work)) mgw_fail('Unsafe work dir.', 6);
 $journal = (string)$job['journal'];
-if (dirname($journal) !== $work || dirname((string)$job['target_sql']) !== $work || dirname((string)$job['mysql_config']) !== $work) mgw_fail('Job paths escape work dir.', 7);
+if (
+    !mgw_path_parent_is_work($journal, $work)
+    || !mgw_path_parent_is_work((string)$job['target_sql'], $work)
+    || !mgw_path_parent_is_work((string)$job['mysql_config'], $work)
+) mgw_fail('Job paths escape work dir.', 7);
 
 $started = microtime(true);
 $checkpoint = $work . '/checkpoint.sql';
