@@ -8,9 +8,9 @@
     "CHANGELOG.md": "aab0ad4139c8050baa31e622d6e25912e94b71775648aa25774492be4a0bb1db",
     "README.md": "a65f55e9bd63897a80dfba722784ef72580d959922a3fdfa845309ba1b3aef81",
     "RECOVERY_RUNBOOK.md": "b6b1952d2efb6ab0c8e21e5a9af50cfabd80388d16018a8e09a7d0c1fb444ce7",
-    "admin/actions.php": "e3cf1b6fc4416296e67998d2ae437f7aec0acf6f14065184f3185435f1130097",
+    "admin/actions.php": "6f55e9df12b1721835f78cb5f55ff4feffff0a59ed60efd0e9d0b5c31f7e0530",
     "admin/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
-    "admin/render.php": "b49ff26c518ece90d0b55cad773a516658ef2a9ecf3d716d07c2ea56fb3e0fe9",
+    "admin/render.php": "edd4994d89b675f64dc75f90ab0c183966a61df5dbc46671e074357e28c17dfc",
     "assets/css/admin.css": "69dfa26a0c5e12eaad55692d899ac1f768b59fdd0601f3ae16937fb003b14e12",
     "assets/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "assets/js/admin.js": "e8e43f73dd6d9502a64c95e77038b3cdeff38c4cd74d7ee6939458fedd7302e8",
@@ -32,7 +32,7 @@
     "uninstall.php": "cef8058aeeb6d808286f5b50cb7a7b887597114e37ddfc64ecf7590082ff2e51",
     "includes/diagnostics.php": "6e3960c4a4eba796df808d4e6653d3dec60c7ecaaf70ee8f21602429d3c17e44",
     "includes/schedule-health.php": "c5f368bf3e5c71a7506d15ebb6f0c60d7dcf20582bb27b73b6399488588d3f7f",
-    "includes/packs.php": "c0acef8d4a76bae4f0706648cceea8760dae036d46aef8b170d295f4cf6da8d0",
+    "includes/packs.php": "050109cd1c958de7b056fc7410ee6c9c244abc196a925375297118750d23a15b",
     "bin/pack-restore-worker.php": "cab83f36c911ee094251ae77121b54d72ae71594bc3105d1d35bc179f3e518fa"
   }
 }
