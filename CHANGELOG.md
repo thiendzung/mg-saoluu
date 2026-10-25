@@ -1,4 +1,14 @@
-## 1.3.0-rc8 — Minimal final DB writer (2026-10-25)
+## 1.3.0-rc9 — Synchronous shutdown worker (2026-10-25)
+
+- Remove unreliable detached/background worker launching under PHP-FPM.
+- Pack Restore now registers the CLI worker from WordPress shutdown and runs it synchronously as a later PHP shutdown callback.
+- PHP-FPM may flush the queued response with `fastcgi_finish_request()`, while the same request process continues the isolated CLI restore worker.
+- Parent PHP process retains the existing Backup/Restore flock for the whole worker run; the worker no longer owns a second lock.
+- Worker launch failure is detected immediately by exit status, marks the private journal failed, and removes staged mysql.cnf/job/target SQL secrets.
+- Queued jobs older than five minutes are surfaced as stale launch failures instead of looking healthy forever.
+- RC9 keeps RC8 state-hash post-verify and automatic checkpoint rollback. Production Restore remains hard-blocked.
+
+## 1.3.0-rc9 — Minimal final DB writer (2026-10-25)
 
 - Fix RC7 false-success risk caused by third-party WordPress/plugin writes around Restore.
 - WordPress request now only verifies Pack, validates host/prefix/schema and stages private job material.
@@ -6,7 +16,7 @@
 - Worker creates an exact private checkpoint of the selected scope, imports, re-dumps the same scope using deterministic mysqldump ordering, compares state hash, and automatically rolls back on any mismatch.
 - No option-name blacklist: ACF/RankMath/Woo options remain ordinary restored data.
 - DB cleanliness acceptance is scoped to MG Sao Luu-owned writes; unrelated plugins may legitimately create their own transients when wp-admin is opened.
-- RC8 keeps Production Restore hard-blocked.
+- RC9 keeps Production Restore hard-blocked.
 
 ## 1.3.0-rc7 — Simple Pack Backup/Restore (2026-10-25)
 
@@ -33,7 +43,7 @@
 - Runtime Restore/Rollback now skips the currently executing MG Sao Luu plugin directory during extraction, copy, new-file bookkeeping and cleanup, preventing an older backup from downgrading the active restore engine mid-transaction.
 - UI explicitly documents that the running restore engine is preserved and must be restored separately from a trusted release ZIP if needed.
 - Add regression coverage proving an archived RC7-style plugin payload cannot overwrite or delete an RC9 runtime plugin.
-- RC8 transactional rollback and timezone fixes are retained; production restore remains blocked for RC builds.
+- RC9 transactional rollback and timezone fixes are retained; production restore remains blocked for RC builds.
 
 ## 1.2.1-rc8 — Transactional rollback remediation (2026-10-24)
 
