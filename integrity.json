@@ -33,6 +33,6 @@
     "includes/diagnostics.php": "6e3960c4a4eba796df808d4e6653d3dec60c7ecaaf70ee8f21602429d3c17e44",
     "includes/schedule-health.php": "c5f368bf3e5c71a7506d15ebb6f0c60d7dcf20582bb27b73b6399488588d3f7f",
     "includes/packs.php": "48b71641edb67d18c842ae0f1b06a950f2db5f7ced8e8834db23ef195cb13aa1",
-    "bin/pack-restore-worker.php": "cab83f36c911ee094251ae77121b54d72ae71594bc3105d1d35bc179f3e518fa"
+    "bin/pack-restore-worker.php": "48fb0646807ea5447a050289d20ef223c18f204a172563a07bb70115b2e497c3"
   }
 }
