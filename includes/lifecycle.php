@@ -155,11 +155,6 @@ function mg_saoluu_save_environment_choice($env, $verify = '') {
     return true;
 }
 
-add_filter('pre_option_blog_public', 'mg_saoluu_force_noindex_nonproduction');
-function mg_saoluu_force_noindex_nonproduction($pre) {
-    if (mg_saoluu_environment() !== 'production' && get_option('mg_saoluu_force_noindex', '1') === '1') return '0';
-    return $pre;
-}
 
 
 add_filter('cron_schedules', 'mg_saoluu_add_weekly_schedule');
