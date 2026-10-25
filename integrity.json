@@ -1,12 +1,12 @@
 {
   "format": "mg-saoluu-integrity",
   "version": 1,
-  "plugin_version": "1.3.0-rc11",
+  "plugin_version": "1.3.0-rc12",
   "generated_at": "2026-10-25T00:00:00+00:00",
   "files": {
     ".htaccess": "8a140e242a320239d8217be279f4ee83a7157f45c3b9df5f121e868997af81ef",
-    "CHANGELOG.md": "9985d590aea54939e2b2c5b6ba1f3739ae7bfa069d089d09915dcae6136f3885",
-    "README.md": "e03b8cd9775ba2480a33cf09541aa86ccf884db6a4241fb0977c16e0907a765d",
+    "CHANGELOG.md": "aab0ad4139c8050baa31e622d6e25912e94b71775648aa25774492be4a0bb1db",
+    "README.md": "a65f55e9bd63897a80dfba722784ef72580d959922a3fdfa845309ba1b3aef81",
     "RECOVERY_RUNBOOK.md": "b6b1952d2efb6ab0c8e21e5a9af50cfabd80388d16018a8e09a7d0c1fb444ce7",
     "admin/actions.php": "e3cf1b6fc4416296e67998d2ae437f7aec0acf6f14065184f3185435f1130097",
     "admin/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
@@ -26,13 +26,13 @@
     "includes/restore.php": "ee36518358ef2e7ec18728ab84ac4c8e7e6e34dde21f5c29eaee9a23021be6b8",
     "includes/security.php": "efc11180240724c17d9068b6c10ee0f2527c2af9c831b7b550fc41abe3566262",
     "index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
-    "mg-saoluu.php": "a3746073de3e7ea080bc1fb38c6488f4fabf8a18f90b9029d983e27fc3efc327",
-    "readme.txt": "46bb71f951897534e2aceea71f7e60a9953f12f72227ed6f3759ece488688d3e",
+    "mg-saoluu.php": "3a8690a5dd417b66040d9634e00826ccaed05dd8e63b398d900e5694ea631ef8",
+    "readme.txt": "2a5be22cdfb354c6f352ae1328dd8bcee7b695c63b037b98d0610dce0adbc80b",
     "tools/recovery-verify.php": "69c3a6340616210aaffdfd5deec941c51d3f649d4f8ec3413f016506d9b934da",
     "uninstall.php": "cef8058aeeb6d808286f5b50cb7a7b887597114e37ddfc64ecf7590082ff2e51",
     "includes/diagnostics.php": "6e3960c4a4eba796df808d4e6653d3dec60c7ecaaf70ee8f21602429d3c17e44",
     "includes/schedule-health.php": "c5f368bf3e5c71a7506d15ebb6f0c60d7dcf20582bb27b73b6399488588d3f7f",
-    "includes/packs.php": "bec49d4ed9050f4a93f4ed4e158b346fa22be0cbe7c7dfd118a489aae4f793d1",
-    "bin/pack-restore-worker.php": "b04d6d5cf4fb603f20bfd9bdfb11eb0fbcc27c120cf6334c06da3c63f955fb18"
+    "includes/packs.php": "c0acef8d4a76bae4f0706648cceea8760dae036d46aef8b170d295f4cf6da8d0",
+    "bin/pack-restore-worker.php": "cab83f36c911ee094251ae77121b54d72ae71594bc3105d1d35bc179f3e518fa"
   }
 }
