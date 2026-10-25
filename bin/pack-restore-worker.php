@@ -66,13 +66,23 @@ function mgw_run_dump($job, $output) {
     @unlink($err);
     return $status === 0 && is_file($output) && filesize($output) > 0;
 }
-function mgw_state_hash($path) {
+function mgw_state_hash_line($line, $pack = '') {
+    $line = preg_replace('/\\sAUTO_INCREMENT=\\d+\\b/i', '', (string)$line);
+    if ($pack === 'settings') {
+        $line = preg_replace(
+            '/^(REPLACE INTO `[^`]+` VALUES \\()\\d+(,)/',
+            '$1<OPTION_ID>$2',
+            $line
+        );
+    }
+    return $line;
+}
+function mgw_state_hash($path, $pack = '') {
     $h = @fopen($path, 'rb');
     if (!$h) return '';
     $ctx = hash_init('sha256');
     while (($line = fgets($h)) !== false) {
-        $line = preg_replace('/\\sAUTO_INCREMENT=\\d+\\b/i', '', $line);
-        hash_update($ctx, $line);
+        hash_update($ctx, mgw_state_hash_line($line, $pack));
     }
     fclose($h);
     return hash_final($ctx);
@@ -90,11 +100,11 @@ function mgw_build_checkpoint($job, $path) {
     $pack = (string)$job['pack'];
     if ($pack === 'full_db') {
         if (!mgw_run_dump($job, $path)) return '';
-        return mgw_state_hash($path);
+        return mgw_state_hash($path, (string)$job['pack']);
     }
     $data = $path . '.data';
     if (!mgw_run_dump($job, $data)) { @unlink($data); return ''; }
-    $state_hash = mgw_state_hash($data);
+    $state_hash = mgw_state_hash($data, (string)$job['pack']);
     $out = @fopen($path, 'xb');
     $in = @fopen($data, 'rb');
     if (!$out || !$in) {
@@ -129,7 +139,7 @@ function mgw_import($job, $sql) {
 function mgw_current_hash($job, $work) {
     $verify = $work . '/verify-' . bin2hex(random_bytes(5)) . '.sql';
     if (!mgw_run_dump($job, $verify)) { @unlink($verify); return ''; }
-    $hash = mgw_state_hash($verify);
+    $hash = mgw_state_hash($verify, (string)$job['pack']);
     @unlink($verify);
     return $hash;
 }
