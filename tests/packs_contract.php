@@ -15,6 +15,7 @@ class WP_Error {
 function is_wp_error($x){return $x instanceof WP_Error;}
 function sanitize_key($s){return strtolower(preg_replace('/[^a-z0-9_-]/','',(string)$s));}
 function wp_json_encode($v,$flags=0){return json_encode($v,$flags);}
+function mg_saoluu_binary_version($binary){return 'mysqldump Ver 8.0';}
 function check_pack($name,$ok){
     $GLOBALS['pack_tests']++;
     if(!$ok){fwrite(STDERR,"FAIL $name\n");exit(1);}
@@ -59,9 +60,11 @@ check_pack('settings pack excludes volatile scheduler/updater runtime rows',
 check_pack('settings dump uses one row per statement for logical hashing',
     in_array('--skip-extended-insert', mg_saoluu_pack_dump_options('settings', '/usr/bin/mysqldump'), true));
 
-$hash_a=$dir.'/settings-a.sql';
-$hash_b=$dir.'/settings-b.sql';
-$hash_c=$dir.'/settings-c.sql';
+$hash_root=sys_get_temp_dir().'/mgsl-pack-hash-'.bin2hex(random_bytes(4));
+mkdir($hash_root,0700,true);
+$hash_a=$hash_root.'/settings-a.sql';
+$hash_b=$hash_root.'/settings-b.sql';
+$hash_c=$hash_root.'/settings-c.sql';
 file_put_contents($hash_a, "REPLACE INTO `wp_options` VALUES (17,'blogdescription','Find Art That Feels Like You','yes');\n");
 file_put_contents($hash_b, "REPLACE INTO `wp_options` VALUES (999,'blogdescription','Find Art That Feels Like You','yes');\n");
 file_put_contents($hash_c, "REPLACE INTO `wp_options` VALUES (999,'blogdescription','Different value','yes');\n");
@@ -69,7 +72,7 @@ check_pack('settings state hash ignores physical option_id only',
     mg_saoluu_pack_state_hash_file($hash_a,'settings')===mg_saoluu_pack_state_hash_file($hash_b,'settings'));
 check_pack('settings state hash still detects option value changes',
     mg_saoluu_pack_state_hash_file($hash_a,'settings')!==mg_saoluu_pack_state_hash_file($hash_c,'settings'));
-@unlink($hash_a); @unlink($hash_b); @unlink($hash_c);
+@unlink($hash_a); @unlink($hash_b); @unlink($hash_c); @rmdir($hash_root);
 
 $content_tables=mg_saoluu_pack_tables('content');
 check_pack('content pack keeps complete WordPress content dependency group',
