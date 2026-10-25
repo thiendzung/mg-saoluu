@@ -661,7 +661,7 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
         return new WP_Error('pack_cli_missing', 'Pack Restore cần mysql và mysqldump/mariadb-dump CLI.');
     }
     if (mg_saoluu_environment() === 'production' && strpos(MG_SAOLUU_VERSION, '-rc') !== false) {
-        return new WP_Error('rc_production_restore_disabled', 'RC9 chỉ test Pack Restore trên clone/staging.');
+        return new WP_Error('rc_production_restore_disabled', 'RC10 chỉ test Pack Restore trên clone/staging.');
     }
 
     $prepared = mg_saoluu_pack_prepare_zip($backup_file, $password);
@@ -671,7 +671,7 @@ function mg_saoluu_restore_pack($backup_file, $password, $operation_lock_token =
     if (!mg_saoluu_pack_definition($pack)) { @unlink($prepared['zip']); return new WP_Error('pack_invalid', 'Pack không được hỗ trợ.'); }
     if ((int) ($manifest['version'] ?? 0) < 2 || !preg_match('/^[a-f0-9]{64}$/', (string) ($manifest['state_hash'] ?? ''))) {
         @unlink($prepared['zip']);
-        return new WP_Error('pack_post_verify_missing', 'Pack cũ không có state hash hậu kiểm; RC9 chỉ Verify, không Restore file này.');
+        return new WP_Error('pack_post_verify_missing', 'Pack cũ không có state hash hậu kiểm; RC10 chỉ Verify, không Restore file này.');
     }
     if (strtolower((string) ($manifest['source_host'] ?? '')) !== strtolower(mg_saoluu_host())) {
         @unlink($prepared['zip']);
