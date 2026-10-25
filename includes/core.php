@@ -456,7 +456,6 @@ function mg_saoluu_manifest($type) {
         'plugin_version' => MG_SAOLUU_VERSION,
         'backup_type' => $type,
         'created_at' => current_time('mysql'),
-        'source_environment' => mg_saoluu_environment(),
         'source_url' => home_url('/'),
         'source_site_url' => site_url('/'),
         'source_host' => mg_saoluu_host(),

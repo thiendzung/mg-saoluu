@@ -81,30 +81,4 @@ function mg_saoluu_environment_info($env = '') {
 
 function mg_saoluu_is_local_environment() { return mg_saoluu_environment() === 'local'; }
 
-add_action('admin_bar_menu', 'mg_saoluu_admin_bar_environment', 999);
-function mg_saoluu_admin_bar_environment($bar) {
-    if (!current_user_can('manage_options')) return;
-    $info = mg_saoluu_environment_info();
-    $bar->add_node([
-        'id' => 'mg-saoluu-environment',
-        'title' => esc_html($info['label']),
-        'href' => admin_url('admin.php?page=mg-saoluu-tools'),
-        'meta' => ['class' => 'mg-saoluu-env-bar'],
-    ]);
-}
-add_action('admin_head', 'mg_saoluu_environment_bar_css');
-add_action('wp_head', 'mg_saoluu_environment_bar_css');
-function mg_saoluu_environment_bar_css() {
-    if (!is_admin_bar_showing() || !current_user_can('manage_options')) return;
-    $info = mg_saoluu_environment_info();
-    echo '<style>#wpadminbar #wp-admin-bar-mg-saoluu-environment>.ab-item{background:' . esc_attr($info['color']) . '!important;color:#fff!important;font-weight:700}</style>';
-}
-
-add_filter('pre_wp_mail', 'mg_saoluu_block_nonproduction_email', 10, 2);
-function mg_saoluu_block_nonproduction_email($return, $atts) {
-    if (mg_saoluu_environment() === 'production') return $return;
-    if (get_option('mg_saoluu_block_emails', '1') !== '1') return $return;
-    if (defined('MG_SAOLUU_ALLOW_EMAIL') && MG_SAOLUU_ALLOW_EMAIL) return $return;
-    return true;
-}
 

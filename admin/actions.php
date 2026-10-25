@@ -5,6 +5,18 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     if (!current_user_can('manage_options')) wp_die('Bạn không có quyền thực hiện.');
     check_admin_referer('mg_saoluu_secure', 'mg_nonce');
     $action = sanitize_key(wp_unslash($_POST['mg_action']));
+
+    // v1.3.1 active product surface: Full Site Backup + Full Site Restore only.
+    if (in_array($action, [
+        'pack_backup','pack_restore','pack_restore_upload','verify_restore_upload','restore_sql_upload',
+        'security_generate_device','security_pair_code','security_import_pair','security_revoke_signer',
+        'security_restore_challenge','security_sign_restore_challenge','security_apply_restore_approval','security_lock_restore',
+        'setup_environment','setup_security','save_security','save_settings'
+    ], true)) {
+        $status = 'error';
+        $message = 'v1.3.1 đã đơn giản hóa: chỉ dùng Full Site Backup và Full Site Restore.';
+        return;
+    }
     if (in_array($action,['backup','pack_backup','pack_restore','pack_restore_upload','verify_restore_upload','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
 
     // v1.2.1 concentrates on BACKUP/RESTORE. Existing transfer and deploy
@@ -513,42 +525,29 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         }
 
         if ($action === 'backup') {
-            $type = sanitize_key(wp_unslash($_POST['backup_type'] ?? 'sql'));
             $note = sanitize_text_field(wp_unslash($_POST['backup_note'] ?? ''));
-            $encrypt = isset($_POST['encrypt_backup']);
-            $password = (string) wp_unslash($_POST['backup_password'] ?? '');
-            $confirm_password = (string) wp_unslash($_POST['backup_password_confirm'] ?? '');
-            if ($encrypt && $password !== '' && $password !== $confirm_password) { $status = 'error'; $message = 'Hai lần nhập mật khẩu mã hóa không giống nhau.'; return; }
-            if (isset($_POST['upload_drive']) && !$encrypt) { $status = 'error'; $message = 'Gửi Drive yêu cầu bật mã hóa backup.'; return; }
-            $result = mg_saoluu_create_backup($type, $note, 'backup', true, [
-                'encrypt' => $encrypt,
-                'password' => $password,
-                'upload_drive' => isset($_POST['upload_drive']),
-                'purpose' => $type === 'local_copy' ? 'transfer' : 'normal',
+            $result = mg_saoluu_create_backup('safe_full', $note, 'backup', true, [
+                'encrypt' => false,
+                'upload_drive' => false,
+                'purpose' => 'normal',
             ]);
-            if (is_wp_error($result)) { $status = 'error'; $message = $result->get_error_message(); }
-            else { mg_saoluu_log_event('backup', 'Tạo bản sao', ['file' => $result, 'type' => $type]); $status = 'success'; $message = 'Đã tạo bản sao: ' . $result . '. Nên tải một bản về Mac hoặc nơi lưu riêng.'; }
+            if (is_wp_error($result)) {
+                $status = 'error'; $message = $result->get_error_message();
+            } else {
+                mg_saoluu_log_event('backup', 'Tạo Full Site Backup', ['file' => $result, 'type' => 'safe_full']);
+                $status = 'success'; $message = 'Đã tạo Full Site Backup: ' . $result . '.';
+            }
             return;
         }
 
-        if (in_array($action, ['restore_saved', 'restore_zip_upload', 'restore_sql_upload'], true)) {
-            if (mg_saoluu_environment() === 'production' && !mg_saoluu_production_full_restore_enabled()) {
-                $status = 'error'; $message = 'Build này chưa được phép Full Site Restore trên Production.'; return;
-            }
+        if (in_array($action, ['restore_saved', 'restore_zip_upload'], true)) {
             $self = mg_saoluu_self_integrity();
-            if (empty($self['ok'])) { $status = 'error'; $message = 'Đã chặn khôi phục vì file của MG Sao Lưu đang thiếu hoặc lệch phiên bản. Hãy cài lại đúng ZIP trước.'; return; }
-            if (mg_saoluu_environment() === 'production') {
-                $sensitive = mg_saoluu_security_sensitive_confirmation(
-                    'restore',
-                    (string) wp_unslash($_POST['admin_password'] ?? ''),
-                    sanitize_text_field(wp_unslash($_POST['restore_phrase'] ?? '')),
-                    mg_saoluu_environment_info()['phrase'],
-                    sanitize_text_field(wp_unslash($_POST['restore_host'] ?? ''))
-                );
-                if (is_wp_error($sensitive)) { $status = 'error'; $message = $sensitive->get_error_message(); return; }
+            if (empty($self['ok'])) {
+                $status = 'error'; $message = 'File plugin đang thiếu hoặc lệch phiên bản. Hãy cài lại đúng ZIP trước khi Restore.'; return;
             }
-            $confirm = mg_saoluu_check_restore_confirmation($_POST['restore_phrase'] ?? '', isset($_POST['restore_confirm']));
-            if (is_wp_error($confirm)) { $status = 'error'; $message = $confirm->get_error_message(); return; }
+            if (!isset($_POST['restore_confirm'])) {
+                $status = 'error'; $message = 'Hãy xác nhận trước khi khôi phục.'; return;
+            }
         }
 
         if ($action === 'restore_saved') {
@@ -556,10 +555,8 @@ function mg_saoluu_handle_actions(&$message, &$status) {
             if (!mg_saoluu_is_backup_filename($name)) { $status = 'error'; $message = 'Tên file không hợp lệ.'; return; }
             $path = mg_saoluu_get_backup_dir() . $name;
             if (!is_readable($path)) { $status = 'error'; $message = 'Không tìm thấy file sao lưu.'; return; }
-            $restore_files = ($_POST['restore_mode'] ?? 'database') === 'files_database';
-            $change_url = mg_saoluu_environment() === 'production' ? false : isset($_POST['change_url']);
             $password = (string) wp_unslash($_POST['backup_password'] ?? '');
-            $result = mg_saoluu_restore_zip($path, $restore_files, $change_url, $password);
+            $result = mg_saoluu_restore_zip($path, true, true, $password);
             if (is_wp_error($result)) {
                 $status = 'error';
                 $message = $result->get_error_message();
@@ -583,10 +580,8 @@ function mg_saoluu_handle_actions(&$message, &$status) {
             $extension = strtolower(pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
             $staged = mg_saoluu_stage_upload($file, $extension);
             if (is_wp_error($staged)) { $status = 'error'; $message = $staged->get_error_message(); return; }
-            $restore_files = ($_POST['restore_mode'] ?? 'database') === 'files_database';
-            $change_url = mg_saoluu_environment() === 'production' ? false : isset($_POST['change_url']);
             $password = (string) wp_unslash($_POST['backup_password'] ?? '');
-            $result = mg_saoluu_restore_zip($staged, $restore_files, $change_url, $password);
+            $result = mg_saoluu_restore_zip($staged, true, true, $password);
             @unlink($staged);
             if (is_wp_error($result)) { $status = 'error'; $message = $result->get_error_message(); }
             else { mg_saoluu_log_event('restore_upload', 'Nhập và khôi phục gói ZIP'); $status = 'success'; $message = 'Đã nhập và khôi phục gói sao lưu. Bản dự phòng trước khôi phục: ' . $result['pre_backup']; }

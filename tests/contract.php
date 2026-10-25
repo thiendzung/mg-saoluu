@@ -66,11 +66,9 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.3.0');
-define('MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE', true);
+define('MG_SAOLUU_VERSION', '1.3.1');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
-function mg_saoluu_production_full_restore_enabled(){return MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE === true && strpos(MG_SAOLUU_VERSION, '-rc') === false;}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
 function mg_saoluu_environment_info($env=''){
     $env=$env!==''?$env:mg_saoluu_environment();
@@ -99,26 +97,13 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('stable version constant promoted', MG_SAOLUU_VERSION === '1.3.0');
-test('stable production full restore capability is explicit', mg_saoluu_production_full_restore_enabled() === true);
+test('v1.3.1 version constant promoted', MG_SAOLUU_VERSION === '1.3.1');
 test('self-integrity cache does not create DB transient',
     !array_filter(array_keys($GLOBALS['test_transients']), static fn($k)=>str_contains((string)$k,'self_integrity')));
 
-// Stable production restore still requires the signed temporary unlock plus the
-// explicit confirmation phrase. Version promotion must not bypass this gate.
-$GLOBALS['test_environment']='production';
-$GLOBALS['test_restore_unlock']=[];
-$prod_locked=mg_saoluu_check_restore_confirmation('RESTORE MOTGU.COM', true);
-test('stable production restore remains locked without signed unlock',
-    is_wp_error($prod_locked) && $prod_locked->get_error_code()==='production_locked');
-$GLOBALS['test_restore_unlock']=['active'=>true,'expires_at'=>time()+600];
-$prod_phrase=mg_saoluu_check_restore_confirmation('WRONG PHRASE', true);
-test('stable production restore rejects wrong confirmation phrase even when unlocked',
-    is_wp_error($prod_phrase) && $prod_phrase->get_error_code()==='confirm_failed');
-test('stable production restore confirmation passes only with active unlock and exact phrase',
-    mg_saoluu_check_restore_confirmation('RESTORE MOTGU.COM', true)===true);
-$GLOBALS['test_restore_unlock']=[];
-$GLOBALS['test_environment']='local';
+test('simple restore requires explicit confirmation checkbox',
+    is_wp_error(mg_saoluu_check_restore_confirmation('', false))
+    && mg_saoluu_check_restore_confirmation('', true) === true);
 
 // Storage isolation: multiple filesystem paths including symlinks.
 $external=mg_saoluu_get_backup_dir();
@@ -341,11 +326,12 @@ test('restore health accepts present active theme',
     mg_saoluu_restore_health_check('https://motgu.com/')===true);
 $GLOBALS['test_options']['stylesheet']='';
 
-test('debug enabled on clone',mg_saoluu_debug_enabled()===true);
-test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'local_copy'])['password']));
-test('debug writes private JSONL',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===true);
-test('debug file outside webroot',mg_saoluu_storage_path_safe(mg_saoluu_debug_file()));
-test('debug log excludes password',!str_contains(file_get_contents(mg_saoluu_debug_file()),'secret'));
+test('debug defaults off without explicit flag',mg_saoluu_debug_enabled()===false);
+test('diagnostics redacts secrets',!isset(mg_saoluu_debug_context(['password'=>'secret','type'=>'full'])['password']));
+$debug_file = mg_saoluu_debug_file();
+test('debug disabled means no JSONL write',mg_saoluu_debug_log('test_checkpoint',['code'=>'ok','password'=>'secret'])===false);
+test('debug file path remains outside webroot',mg_saoluu_storage_path_safe($debug_file));
+test('debug disabled leaves no secret-bearing log',!is_file($debug_file) || !str_contains((string)file_get_contents($debug_file),'secret'));
 // Legacy Data Transfer and Deploy code are not shipped; options are preserved.
 test('no dormant data-engine in distribution', !is_file(MG_SAOLUU_DIR.'includes/data-engine.php'));
 test('no dormant deploy engine in distribution', !is_file(MG_SAOLUU_DIR.'includes/deploy.php'));
@@ -512,6 +498,32 @@ file_put_contents($orphan, 'orphan');
 $orphan_context = mg_saoluu_rollback_checkpoint_context($orphan, ['purpose' => 'rollback'], true);
 test('unreferenced rollback purpose fails closed',is_wp_error($orphan_context)&&$orphan_context->get_error_code()==='rollback_checkpoint_stale');
 
+$pairs = mg_saoluu_domain_rewrite_pairs(
+    'http://mgsl-qa.test/',
+    'http://mgsl-qa.test/',
+    'https://mgsl-restore.test/',
+    'https://mgsl-restore.test/'
+);
+test('domain rewrite maps source http to current target',
+    ($pairs['http://mgsl-qa.test'] ?? '') === 'https://mgsl-restore.test');
+test('domain rewrite also maps source https variant to current target',
+    ($pairs['https://mgsl-qa.test'] ?? '') === 'https://mgsl-restore.test');
+
+$subpath_pairs = mg_saoluu_domain_rewrite_pairs(
+    'http://source.test/',
+    'http://source.test/wp/',
+    'https://target.test/',
+    'https://target.test/wp/'
+);
+test('domain rewrite processes specific site URL before home URL',
+    str_ends_with((string) array_key_first($subpath_pairs), '/wp'));
+
+$restore_source_order = file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php');
+$source_assign_pos = strpos($restore_source_order, "\$source_home = (string) (\$manifest['source_url'] ?? '')");
+$source_guard_pos = strpos($restore_source_order, "if (\$source_home === '' || \$source_site === '')");
+test('source URLs are assigned before source-url guard',
+    $source_assign_pos !== false && $source_guard_pos !== false && $source_assign_pos < $source_guard_pos);
+
 // Database URL migration must process a table containing the old URL at most once.
 class FixtureDB {
  public $prefix='wp_';public $rows=[];public $updates=[];
@@ -576,8 +588,10 @@ test('matching prefix allowed',$ok===true);
 $mismatch=mg_saoluu_backup_prefix_preflight(['db_table_prefix'=>'mg_'],'wp_',true);
 test('mismatched table prefix blocked',is_wp_error($mismatch)&&$mismatch->get_error_code()==='backup_prefix_mismatch');
 $unknown=mg_saoluu_backup_prefix_preflight([],'wp_',true);
-test('legacy cross-site unknown prefix blocked',is_wp_error($unknown)&&$unknown->get_error_code()==='backup_prefix_unknown');
-test('legacy same-site prefix still allowed',mg_saoluu_backup_prefix_preflight([],'wp_',false)===true);
+test('unknown prefix blocked on every restore',is_wp_error($unknown)&&$unknown->get_error_code()==='backup_prefix_unknown');
+test('unknown prefix is also blocked on same-domain restore',
+    is_wp_error(mg_saoluu_backup_prefix_preflight([],'wp_',false))
+    && mg_saoluu_backup_prefix_preflight([],'wp_',false)->get_error_code()==='backup_prefix_unknown');
 
 // v1.2.1: backend safety and honest archive statuses.
 test('catalog requires actual restore-drill proof', !mg_saoluu_catalog_has_recovery_proof([
@@ -625,10 +639,12 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// Stable opens only guarded Full Site Restore. Pack Restore remains blocked
-// independently at action + engine level and is covered by static UI contracts.
-test('stable is not an RC rename gate',
-    strpos(MG_SAOLUU_VERSION, '-rc') === false && MG_SAOLUU_ENABLE_PRODUCTION_FULL_RESTORE === true);
+// v1.3.1 has one environment-neutral restore flow.
+$restore_source = file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php');
+test('v1.3.1 restore forces Full Site plus automatic URL rewrite',
+    str_contains($restore_source, '$restore_files = true;')
+    && str_contains($restore_source, '$change_url = true;')
+    && str_contains($restore_source, "'domain_rewrite'"));
 $_SERVER['REQUEST_METHOD']='GET';$_POST=[];
 
 // WordPress-independent AES-GCM decryption: binary roundtrip + wrong-key block.
@@ -648,21 +664,19 @@ $wrong=false;
 try { mgsl_recovery_decrypt($fixture_cipher,$fixture_wrong,'different-incorrect-key'); }
 catch (Throwable $e) { $wrong=true; }
 test('offline wrong key fail closed and deletes output',$wrong&&!file_exists($fixture_wrong));
-// Setup wizard should never create plaintext test backups by accident or
-// advertise the removed PHP SQL fallback as if it were runnable.
-$setup_actions = file_get_contents(MG_SAOLUU_DIR.'admin/actions.php');
-$setup_ui = file_get_contents(MG_SAOLUU_DIR.'admin/render.php');
-test('Setup trial SQL backup explicitly encrypted', str_contains($setup_actions, "'backup_setup_test', true, ['encrypt' => true, 'upload_drive' => false]"));
-test('Admin never advertises disabled PHP fallback', !str_contains($setup_ui, 'PHP dự phòng'));
-// UI contract: honest operation status and readable restore checkpoint.
+$active_actions = file_get_contents(MG_SAOLUU_DIR.'admin/actions.php');
 $ux_php = file_get_contents(MG_SAOLUU_DIR . 'admin/render.php');
 $ux_js = file_get_contents(MG_SAOLUU_DIR . 'assets/js/admin.js');
+test('active Backup always creates safe_full',
+    str_contains($active_actions, "mg_saoluu_create_backup('safe_full'"));
+test('active UI has automatic domain rewrite wording',
+    str_contains($ux_php, 'tự đổi URL từ domain trong backup'));
 test('UI prevents duplicate long-running submissions', str_contains($ux_js, 'mgslSubmitting') && str_contains($ux_js, 'mgsl-operation-pending'));
 test('UI warns before exceeding the PHP upload limit', str_contains($ux_php, 'data-mgsl-max-upload') && str_contains($ux_js, 'setCustomValidity'));
-test('UI reports linked checkpoint and cleanup result', str_contains($ux_php, 'checkpoint_sha') && str_contains($ux_php, 'rollback_file_cleanup'));
-test('UI uses timezone-safe restore duration helper and truthful failed-rollback warning',
-    str_contains($ux_php, 'mg_saoluu_restore_duration_seconds')
-    && str_contains($ux_php, 'rollback_attempt_failed_reverted'));
+test('restore journal records automatic domain rewrite',
+    str_contains($restore_source, "'source_home'")
+    && str_contains($restore_source, "'target_home'")
+    && str_contains($restore_source, "'domain_rewrite'"));
 test('restore engine protects its own running plugin from archived downgrade',
     str_contains(file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php'), 'mg_saoluu_is_runtime_self_path'));
 // No real WordPress/DBngin/cPanel integration was performed by this mock harness.

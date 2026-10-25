@@ -1,4 +1,22 @@
-# MG Sao Lưu v1.3.0 — guarded same-host Production Full Site Restore
+# MG Sao Lưu v1.3.1 — Simple Full Backup & Restore
+
+v1.3.1 rút sản phẩm về đúng hai việc: **Full Backup** và **Full Restore**.
+
+- Không còn khái niệm Web thật / Local / Staging trong luồng sử dụng.
+- Không còn signer, challenge, unlock 10 phút hoặc RESTORE phrase.
+- Không còn Pack Restore hay SQL Restore trong active UI/API.
+- Backup luôn gồm database + files, lưu ngoài webroot, mỗi payload có SHA-256.
+- ZIP runtime ưu tiên tốc độ bằng Deflate level 1.
+- Restore luôn database + files, luôn tạo checkpoint trước khi ghi.
+- Restore tự đọc `source_url/source_site_url` trong manifest và rewrite sang `home_url/site_url` hiện tại.
+- DB table prefix vẫn phải khớp; path traversal, symlink guard, integrity, snapshot prune và automatic rollback vẫn fail-closed.
+- Plugin đang chạy vẫn tự bảo vệ, không bị backup cũ ghi đè giữa transaction.
+
+Đây là **Backup/Restore**, không phải migration engine tổng quát: v1.3.1 tự xử lý đổi domain WordPress nhưng không tự đổi DB prefix hoặc cấu hình hosting.
+
+---
+
+
 
 WordPress Backup → Verify → Store → Restore. Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 

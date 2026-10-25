@@ -69,8 +69,152 @@ function mg_saoluu_render_setup_wizard($message = '', $status = '') {
     <?php
 }
 
-function mg_saoluu_render_page() {
+function mg_saoluu_render_simple_page() {
     if (!current_user_can('manage_options')) wp_die('Bạn không có quyền truy cập.');
+
+    $message = ''; $status = '';
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && !empty($_SERVER['CONTENT_LENGTH'])) {
+        $status = 'error';
+        $message = 'File vượt giới hạn upload của hosting. Hãy tăng post_max_size/upload_max_filesize hoặc dùng file nhỏ hơn.';
+    } else {
+        mg_saoluu_handle_actions($message, $status);
+    }
+
+    $tabs = ['backup' => 'Sao lưu', 'restore' => 'Khôi phục', 'backups' => 'Bản đã lưu'];
+    $requested = sanitize_key(wp_unslash($_POST['return_tab'] ?? $_GET['tab'] ?? 'backup'));
+    $active = isset($tabs[$requested]) ? $requested : 'backup';
+
+    $backup_dir = mg_saoluu_get_backup_dir();
+    $metadata = mg_saoluu_read_metadata($backup_dir . 'metadata.json');
+    $all_files = mg_saoluu_list_backup_files();
+    $full_files = [];
+    foreach ($all_files as $file) {
+        $name = basename($file);
+        $meta = $metadata[$name] ?? [];
+        if (($meta['type'] ?? '') === 'safe_full' && ($meta['purpose'] ?? 'normal') !== 'rollback') $full_files[] = $file;
+    }
+    $journal = mg_saoluu_restore_journal();
+    if (!is_array($journal)) $journal = [];
+    $self = mg_saoluu_self_integrity();
+    $zip_limit = min((int) wp_max_upload_size(), 2 * 1024 * 1024 * 1024);
+    ?>
+    <div class="wrap mgsl-wrap">
+        <?php if ($message): ?><div class="mgsl-message <?php echo $status === 'success' ? 'success' : 'error'; ?>"><?php echo esc_html($message); ?></div><?php endif; ?>
+
+        <section class="mgsl-card">
+            <div class="mgsl-actions-separated">
+                <div>
+                    <h1>MG Sao Lưu <small style="font-size:14px">v<?php echo esc_html(MG_SAOLUU_VERSION); ?></small></h1>
+                    <p><strong><?php echo esc_html(home_url('/')); ?></strong></p>
+                </div>
+                <div class="<?php echo !empty($self['ok']) ? 'mgsl-green' : 'mgsl-red'; ?>">
+                    <?php echo !empty($self['ok']) ? '✓ Plugin nguyên vẹn' : '✕ Plugin integrity lỗi'; ?>
+                </div>
+            </div>
+            <p class="mgsl-small">Một luồng duy nhất: <strong>Full Backup → Full Restore</strong>. Khi Restore sang domain khác, plugin tự đổi URL nguồn sang domain hiện tại.</p>
+        </section>
+
+        <nav class="nav-tab-wrapper mgsl-nav">
+            <?php foreach ($tabs as $key => $label): ?>
+                <a class="nav-tab <?php echo $active === $key ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url(admin_url('admin.php?page=mg-saoluu-tools&tab=' . $key)); ?>"><?php echo esc_html($label); ?></a>
+            <?php endforeach; ?>
+        </nav>
+
+        <?php if ($active === 'backup'): ?>
+            <section class="mgsl-card">
+                <h2 class="mgsl-title">Sao lưu toàn website</h2>
+                <p>Backup gồm database + file website. ZIP dùng Deflate mức nhanh để giảm thời gian nén; mỗi file và SQL đều có SHA-256 trong manifest.</p>
+                <form method="post">
+                    <?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
+                    <input type="hidden" name="mg_action" value="backup">
+                    <input type="hidden" name="return_tab" value="backup">
+                    <div class="mgsl-field"><label>Ghi chú · tùy chọn</label><input type="text" name="backup_note" placeholder="Ví dụ: Trước khi cập nhật giao diện"></div>
+                    <button type="submit" class="button button-primary button-large" <?php disabled(empty($self['ok'])); ?>>Tạo Full Backup</button>
+                </form>
+                <p class="mgsl-small">Tự bỏ qua cache, backup cũ, wp-config.php và file cấu hình server. Backup được lưu ngoài webroot.</p>
+            </section>
+
+        <?php elseif ($active === 'restore'): ?>
+            <section class="mgsl-card">
+                <h2 class="mgsl-title">Khôi phục toàn website</h2>
+                <div class="mgsl-note mgsl-warning">
+                    Trước khi ghi, plugin tự tạo checkpoint. Restore luôn gồm <strong>database + files</strong>, sau đó tự đổi URL từ domain trong backup sang <strong><?php echo esc_html(home_url('/')); ?></strong>.
+                </div>
+                <?php if ($journal): ?>
+                    <p class="mgsl-small">Lần gần nhất: <strong><?php echo esc_html((string)($journal['status'] ?? 'không rõ')); ?></strong>
+                    <?php if (!empty($journal['domain_rewrite']['source_home'])): ?>
+                        · Domain: <code><?php echo esc_html($journal['domain_rewrite']['source_home']); ?></code> → <code><?php echo esc_html($journal['domain_rewrite']['target_home'] ?? home_url('/')); ?></code>
+                    <?php endif; ?></p>
+                <?php endif; ?>
+            </section>
+
+            <section class="mgsl-grid-2">
+                <div class="mgsl-card">
+                    <h3>Bản đang lưu trên server</h3>
+                    <?php if (!$full_files): ?>
+                        <p>Chưa có Full Backup.</p>
+                    <?php else: ?>
+                        <form method="post" onsubmit="return confirm('Khôi phục toàn bộ website từ bản đã chọn?');">
+                            <?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
+                            <input type="hidden" name="mg_action" value="restore_saved">
+                            <input type="hidden" name="return_tab" value="restore">
+                            <div class="mgsl-field"><label>Chọn backup</label><select name="file_name" required>
+                                <?php foreach ($full_files as $file): $name=basename($file); ?>
+                                    <option value="<?php echo esc_attr($name); ?>"><?php echo esc_html($name); ?></option>
+                                <?php endforeach; ?>
+                            </select></div>
+                            <div class="mgsl-field"><label>Mật khẩu · chỉ nhập nếu backup cũ đã mã hóa</label><input type="password" name="backup_password" autocomplete="current-password"></div>
+                            <p><label><input type="checkbox" name="restore_confirm" value="1" required> Tôi đồng ý thay database + files hiện tại</label></p>
+                            <button class="button button-primary" <?php disabled(empty($self['ok'])); ?>>Khôi phục</button>
+                        </form>
+                    <?php endif; ?>
+                </div>
+
+                <div class="mgsl-card">
+                    <h3>Upload backup từ máy</h3>
+                    <p class="mgsl-small">Nhận <code>.zip</code> hoặc backup cũ <code>.mgbackup</code>. Tối đa <?php echo esc_html(size_format($zip_limit)); ?>.</p>
+                    <form method="post" enctype="multipart/form-data" onsubmit="return confirm('Upload và khôi phục toàn bộ website?');">
+                        <?php wp_nonce_field('mg_saoluu_secure','mg_nonce'); ?>
+                        <input type="hidden" name="mg_action" value="restore_zip_upload">
+                        <input type="hidden" name="return_tab" value="restore">
+                        <label class="mgsl-upload-box" data-mgsl-dropzone>
+                            <strong>Kéo thả hoặc bấm chọn backup</strong>
+                            <span class="mgsl-upload-name" data-mgsl-upload-name>Chưa chọn file</span>
+                            <input type="file" name="zip_file" accept=".zip,.mgbackup,application/zip,application/octet-stream" data-mgsl-extensions=".zip,.mgbackup" data-mgsl-max-upload="<?php echo esc_attr((string)$zip_limit); ?>" required>
+                        </label>
+                        <div class="mgsl-field"><label>Mật khẩu · chỉ nhập nếu backup cũ đã mã hóa</label><input type="password" name="backup_password" autocomplete="current-password"></div>
+                        <p><label><input type="checkbox" name="restore_confirm" value="1" required> Tôi đồng ý thay database + files hiện tại</label></p>
+                        <button class="button button-primary" <?php disabled(empty($self['ok']) || $zip_limit < 1); ?>>Upload & Khôi phục</button>
+                    </form>
+                </div>
+            </section>
+
+        <?php else: ?>
+            <section class="mgsl-card">
+                <h2 class="mgsl-title">Full Backup đã lưu</h2>
+                <?php if (!$full_files): ?><p>Chưa có backup.</p><?php else: ?>
+                    <table class="widefat striped"><thead><tr><th>File</th><th>Thời gian</th><th>Dung lượng</th><th></th></tr></thead><tbody>
+                    <?php foreach ($full_files as $file):
+                        $name=basename($file);
+                        $download=wp_nonce_url(admin_url('admin.php?page=mg-saoluu-tools&mg_action=download&file=' . rawurlencode($name)), 'mg_saoluu_download');
+                    ?>
+                        <tr>
+                            <td><code><?php echo esc_html($name); ?></code></td>
+                            <td><?php echo esc_html(wp_date('H:i d/m/Y', filemtime($file))); ?></td>
+                            <td><?php echo esc_html(size_format((int)filesize($file))); ?></td>
+                            <td><a class="button" href="<?php echo esc_url($download); ?>">Tải về</a></td>
+                        </tr>
+                    <?php endforeach; ?></tbody></table>
+                <?php endif; ?>
+            </section>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+function mg_saoluu_render_page() {
+    mg_saoluu_render_simple_page();
+    return;
     $message = ''; $status = '';
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && !empty($_SERVER['CONTENT_LENGTH'])) {
         $status = 'error'; $message = 'File gửi lên vượt giới hạn của hosting. Hãy tăng post_max_size và upload_max_filesize hoặc dùng file nhỏ hơn.';
