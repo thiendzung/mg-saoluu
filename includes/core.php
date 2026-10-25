@@ -62,9 +62,9 @@ function mg_saoluu_binary_candidates($type) {
 }
 
 function mg_saoluu_clear_runtime_cache() {
-    delete_transient('mg_saoluu_binary_mysql');
-    delete_transient('mg_saoluu_binary_mysqldump');
-    delete_transient('mg_saoluu_system_checks');
+    wp_cache_delete('binary_mysql', 'mg_saoluu');
+    wp_cache_delete('binary_mysqldump', 'mg_saoluu');
+    wp_cache_delete('system_checks_' . str_replace(['.', '-'], '_', MG_SAOLUU_VERSION), 'mg_saoluu');
     mg_saoluu_invalidate_backup_cache();
 }
 
