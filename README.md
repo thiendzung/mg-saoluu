@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.3.0-rc5 (pre-release; Stable Backup/Restore + signed Migration QA)
+# MG Sao Lưu v1.3.0-rc6 (pre-release; Stable Backup/Restore + signed Migration QA)
 
 WordPress Backup → Verify → Store → Restore, cộng thêm luồng Local → fresh Production migration có ký.  Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 
@@ -29,7 +29,7 @@ Complex PHP-serialized values containing unavailable plugin objects, enums, cycl
 
 ### Restore engine self-protection
 Full backups may contain the MG Sao Luu plugin version that existed when the archive was created. During runtime Restore/Rollback, the plugin deliberately skips its own currently executing directory so an older archive cannot downgrade or replace the restore engine mid-transaction. The archived copy remains available for offline disaster recovery; restore of the plugin itself must be done separately from a trusted release ZIP/Recovery Runbook.
-\n\n### v1.3.0-rc5 migration scope\nLocal tạo `local_copy` mã hóa có `purpose=migration`, ký Ed25519 theo đúng SHA-256 + source/target + nonce 10 phút. Đích phải là WordPress trắng, cùng DB prefix, không media/comment/order/HPOS; URL đích phải là HTTPS public hostname. RC3 không ghi Production thật.\n\n### Performance\nTab Backup chỉ đọc catalog metadata để liệt kê tối đa 20 gói migration; không quét/decrypt toàn bộ thư mục backup chỉ để render UI. Preflight DB freshness chỉ chạy khi Stage/Apply migration, không chạy trên các tab thông thường.\n
+\n\n### v1.3.0-rc6 migration scope\nLocal tạo `local_copy` mã hóa có `purpose=migration`, ký Ed25519 theo đúng SHA-256 + source/target + nonce 10 phút. Đích phải là WordPress trắng, cùng DB prefix, không media/comment/order/HPOS; URL đích phải là HTTPS public hostname. RC3 không ghi Production thật.\n\n### Performance\nTab Backup chỉ đọc catalog metadata để liệt kê tối đa 20 gói migration; không quét/decrypt toàn bộ thư mục backup chỉ để render UI. Preflight DB freshness chỉ chạy khi Stage/Apply migration, không chạy trên các tab thông thường.\n
 
 ### RC4 rollback schema reconciliation
 Rollback now records the exact pre-Restore database table/view inventory. After importing the checkpoint it removes schema objects introduced by migration/restore, then verifies the final inventory matches the baseline exactly before reporting `rolled_back`. Missing inventory or any drop/mismatch fails closed.
@@ -37,3 +37,7 @@ Rollback now records the exact pre-Restore database table/view inventory. After 
 
 ### RC5 exact DB rollback state
 Migration replay protection and operational audit events are now stored as private JSON state outside WordPress DB. Existing legacy `wp_options` values remain readable for compatibility, but new replay/audit writes do not mutate `mg_options`. This allows an explicit rollback to restore the checkpoint database exactly while preserving replay protection and audit evidence outside the database.
+
+
+### RC6 exact rollback seal
+Explicit rollback now treats the checkpoint database as authoritative after import + schema reconciliation. The finalizer does not re-apply the current target settings over the checkpoint. `blog_public` is captured from the raw options row and restored exactly; non-production noindex remains enforced by the existing runtime filter instead of changing the stored option. Non-security admin caches now use the WordPress Object Cache instead of DB-backed Transients, preventing the Restore UI from creating `_transient_*` rows immediately after rollback.
