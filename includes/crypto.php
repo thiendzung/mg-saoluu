@@ -217,6 +217,15 @@ function mg_saoluu_pack_magic() {
     return 'MGSLPK2!';
 }
 
+function mg_saoluu_is_pack_backup($path) {
+    if (!is_readable($path) || !is_file($path)) return false;
+    $h = @fopen($path, 'rb');
+    if (!$h) return false;
+    $magic = fread($h, 8);
+    fclose($h);
+    return $magic === mg_saoluu_pack_magic();
+}
+
 function mg_saoluu_pack_derive_key($password, $salt, $opslimit, $memlimit) {
     if (!mg_saoluu_pack_crypto_available()) return new WP_Error('pack_crypto_missing', 'Máy chủ cần PHP Sodium để dùng Pack v2.');
     if (!is_string($salt) || strlen($salt) !== SODIUM_CRYPTO_PWHASH_SALTBYTES) return new WP_Error('pack_kdf_salt', 'Salt Pack v2 không hợp lệ.');
