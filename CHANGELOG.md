@@ -6,6 +6,7 @@
 - Plugin version upgrades revoke any inherited Production Restore unlock window.
 - Production Pack Restore remains hard-blocked in UI, action handling and Pack engine.
 - Full Site upload may be verified non-destructively before the separately authorized Restore submission.
+- Full Site Restore now prunes managed files that are absent from the backup snapshot; explicit exclusions and the currently executing MG Sao Luu plugin remain protected. Any prune failure triggers automatic rollback instead of success.
 
 ## 1.3.0-rc13 — Restore upload UX + Production verify-only (2026-10-25)
 
