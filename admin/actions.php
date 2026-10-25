@@ -424,9 +424,13 @@ function mg_saoluu_handle_actions(&$message, &$status) {
             if (is_wp_error($result)) {
                 $status='error'; $message=$result->get_error_message();
             } else {
-                mg_saoluu_log_event('pack_restore', 'Khôi phục Pack', ['file'=>$name,'pack'=>$result['pack'] ?? '']);
+                mg_saoluu_log_event('pack_restore_queued', 'Đã xếp Pack Restore worker', [
+                    'file'=>$name,
+                    'pack'=>$result['pack'] ?? '',
+                    'job_id'=>$result['job_id'] ?? '',
+                ]);
                 $status='success';
-                $message='Khôi phục Pack thành công. Checkpoint cùng Pack: ' . ($result['checkpoint'] ?? '');
+                $message='Đã xác minh Pack và xếp Restore worker tối giản. Job ' . ($result['job_id'] ?? '') . ' sẽ chạy sau khi WordPress kết thúc request; mở lại tab Khôi phục để xem hậu kiểm.';
             }
             return;
         }
