@@ -7,6 +7,7 @@
 - Runtime ZIP uses Deflate level 1 to favor backup speed while retaining standard ZIP compatibility.
 - Restore always applies database + files and always creates a pre-restore checkpoint.
 - Restore automatically rewrites the backup source home/site URL to the current WordPress home/site URL, including serialized values handled by the existing safe replacer.
+- Fix cross-domain rewrite ordering and scheme coverage: source URLs are initialized before guards, and both `http://` and `https://` variants of the source domain are rewritten to the current target URL.
 - Cross-domain restore is allowed when the DB table prefix matches; source environment/host and source-site HMAC are no longer restore gates.
 - Keep SHA-256 payload verification, private storage, CLI database tools, path/symlink guards, exact snapshot prune, plugin self-protection and automatic rollback.
 
