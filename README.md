@@ -1,4 +1,4 @@
-# MG Sao Lưu v1.3.0-rc9 — Simple Pack Backup/Restore
+# MG Sao Lưu v1.3.0-rc10 — RC9 restore core + admin UX
 
 WordPress Backup → Verify → Store → Restore. Restore đã qua nghiệm thu trên clone độc lập. Trên Production, plugin chỉ cho phép khôi phục backup của chính host đó sau phê duyệt ký từ Local và xác nhận lại của quản trị viên. Không có live synchronization.
 
@@ -48,3 +48,8 @@ Migration/domain rewrite không nằm trong Pack Restore và vẫn bị khóa tr
 ## RC9: Restore worker tối giản
 
 Pack Restore không import DB trong request WordPress. Request chỉ verify/preflight/stage private job; worker PHP CLI độc lập chờ cùng `flock` đến khi WordPress process kết thúc, sau đó tạo checkpoint đúng scope, import, dump lại cùng scope bằng mysqldump deterministic và so `state_hash`. Mismatch hoặc import lỗi phải tự rollback checkpoint và không bao giờ trả success.
+
+
+## RC10: Admin UI + Restore từ máy
+
+RC10 giữ nguyên worker/state-hash/rollback đã PASS ở RC9. Thay đổi chỉ ở lớp UX: admin assets dùng hook suffix thật + filemtime cache busting + critical CSS fallback; Restore Pack có hai nguồn **Bản đã lưu** hoặc **Upload từ máy**. Upload local bị giới hạn bởi `wp_max_upload_size()` và hard cap 2 GiB, được chuyển bằng `move_uploaded_file()` vào private temp `0600`, kiểm magic Pack v2 rồi đi vào cùng RC9 restore engine. File upload tạm bị xóa sau khi stage job.
