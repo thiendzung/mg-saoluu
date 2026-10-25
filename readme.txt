@@ -3,11 +3,11 @@ Contributors: thiendung
 Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
-Stable tag: 1.2.1
-Current pre-release: 1.3.0-rc13
+Stable tag: 1.3.0
+Current release: 1.3.0
 License: GPLv2 or later
 
-MG Sao Luu v1.2.1: Backup, Verify, Store, Restore co kiem soat va rollback.
+MG Sao Luu v1.3.0: Backup, Verify, Store, Restore co kiem soat, Production Full Site Restore cung-host va rollback.
 
 == Description ==
 
