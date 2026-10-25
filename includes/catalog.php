@@ -31,11 +31,18 @@ function mg_saoluu_catalog_verify($filename, $password = '') {
         !hash_equals((string) $metadata[$filename]['integrity_sha256'], $digest)) {
         return new WP_Error('stored_hash_mismatch', 'Bản sao đã khác với fingerprint trước đó; đã dừng xác minh.');
     }
-    $manifest = mg_saoluu_read_backup_manifest($path, $password);
-    if (is_wp_error($manifest)) return $manifest;
-
-    $authenticated = mg_saoluu_verify_manifest_signature($manifest);
-    $state = $authenticated ? 'verified' : 'content_hash_only';
+    $is_pack = mg_saoluu_is_pack_backup($path) || (($metadata[$filename]['type'] ?? '') === 'pack');
+    if ($is_pack) {
+        $manifest = mg_saoluu_verify_pack_backup($path, $password);
+        if (is_wp_error($manifest)) return $manifest;
+        $authenticated = true; // XChaCha20-Poly1305 + SQL SHA verified end-to-end.
+        $state = 'verified';
+    } else {
+        $manifest = mg_saoluu_read_backup_manifest($path, $password);
+        if (is_wp_error($manifest)) return $manifest;
+        $authenticated = mg_saoluu_verify_manifest_signature($manifest);
+        $state = $authenticated ? 'verified' : 'content_hash_only';
+    }
     if (!isset($metadata[$filename]) || !is_array($metadata[$filename])) $metadata[$filename] = [];
     $metadata[$filename]['integrity_status'] = $state;
     $metadata[$filename]['integrity_verified_at'] = current_time('mysql');
@@ -47,7 +54,8 @@ function mg_saoluu_catalog_verify($filename, $password = '') {
     }
     return [
         'state' => $state,
-        'signed_by_current_site' => $authenticated,
+        'signed_by_current_site' => !$is_pack && $authenticated,
+        'authenticated_encryption' => $is_pack && $authenticated,
         'sha256' => $digest,
         'size' => $size,
         'manifest' => $manifest,
