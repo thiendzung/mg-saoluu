@@ -416,6 +416,7 @@ function mg_saoluu_restore_target_settings($settings) {
 
 function mg_saoluu_production_unlocked() {
     if (mg_saoluu_environment() !== 'production') return true;
+    if (!mg_saoluu_production_full_restore_enabled()) return false;
     $info = mg_saoluu_security_restore_unlock_info();
     return !empty($info['active']);
 }
