@@ -783,6 +783,33 @@ function mg_saoluu_rollback_from_backup($pre_path, $restore_files, $password, $t
 }
 
 /** Distinguish incompatible WordPress DB table prefixes before import. */
+function mg_saoluu_domain_rewrite_pairs($source_home, $source_site, $target_home, $target_site) {
+    $pairs = [];
+    foreach ([
+        [(string) $source_site, (string) $target_site],
+        [(string) $source_home, (string) $target_home],
+    ] as $mapping) {
+        [$source, $target] = $mapping;
+        $source = untrailingslashit($source);
+        $target = untrailingslashit($target);
+        if ($source === '' || $target === '') continue;
+
+        $tail = preg_replace('#^https?://#i', '', $source);
+        if (!is_string($tail) || $tail === '' || $tail === $source) continue;
+
+        foreach (['https://', 'http://'] as $scheme) {
+            $old = $scheme . $tail;
+            if ($old === $target) continue;
+            $pairs[$old] = $target;
+        }
+    }
+    uksort($pairs, static function ($a, $b) {
+        $len = strlen($b) <=> strlen($a);
+        return $len !== 0 ? $len : strcmp($a, $b);
+    });
+    return $pairs;
+}
+
 function mg_saoluu_backup_prefix_preflight($manifest, $target_prefix, $cross_site = false) {
     $source_prefix = (string) ($manifest['db_table_prefix'] ?? '');
     if ($source_prefix === '') return new WP_Error('backup_prefix_unknown', 'Backup thiếu db_table_prefix; đã dừng trước khi ghi.');
@@ -831,6 +858,8 @@ function mg_saoluu_restore_zip($backup_file, $restore_files = true, $change_url 
     // A rollback promise is only valid when the CURRENT target is internally
     // healthy. RC7 allowed a checkpoint whose DB referenced a missing theme;
     // such a checkpoint cannot safely return the site to its prior state.
+    $source_home = (string) ($manifest['source_url'] ?? '');
+    $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
     $target_home = home_url('/');
     $target_site = site_url('/');
     if ($source_home === '' || $source_site === '') {
@@ -882,8 +911,6 @@ function mg_saoluu_restore_zip($backup_file, $restore_files = true, $change_url 
     }
 
     $target_settings = mg_saoluu_capture_target_settings();
-    $source_home = (string) ($manifest['source_url'] ?? '');
-    $source_site = (string) ($manifest['source_site_url'] ?? $source_home);
     $journal = [
         'status' => 'running',
         'operation' => $rollback_restore ? 'rollback' : 'restore',
@@ -927,15 +954,18 @@ function mg_saoluu_restore_zip($backup_file, $restore_files = true, $change_url 
         $journal_saved = mg_saoluu_restore_journal($journal);
         if (is_wp_error($journal_saved)) throw new RuntimeException($journal_saved->get_error_message());
         mg_saoluu_debug_log('restore_database_imported',['target_host'=>mg_saoluu_host()]);
-        if (untrailingslashit($source_home) !== untrailingslashit($target_home)) {
-            $replace_report = mg_saoluu_search_replace_database($source_home, $target_home);
-            if (is_wp_error($replace_report)) throw new RuntimeException($replace_report->get_error_message());
-        }
-        if (untrailingslashit($source_site) !== untrailingslashit($target_site) && untrailingslashit($source_site) !== untrailingslashit($source_home)) {
-            $site_report = mg_saoluu_search_replace_database($source_site, $target_site);
-            if (is_wp_error($site_report)) throw new RuntimeException($site_report->get_error_message());
-            $replace_report['tables'] = max((int) ($replace_report['tables'] ?? 0), (int) ($site_report['tables'] ?? 0));
-            $replace_report['rows'] = (int) ($replace_report['rows'] ?? 0) + (int) ($site_report['rows'] ?? 0);
+        $rewrite_passes = [];
+        foreach (mg_saoluu_domain_rewrite_pairs($source_home, $source_site, $target_home, $target_site) as $old_url => $new_url) {
+            $pass = mg_saoluu_search_replace_database($old_url, $new_url);
+            if (is_wp_error($pass)) throw new RuntimeException($pass->get_error_message());
+            $replace_report['tables'] = max((int) ($replace_report['tables'] ?? 0), (int) ($pass['tables'] ?? 0));
+            $replace_report['rows'] = (int) ($replace_report['rows'] ?? 0) + (int) ($pass['rows'] ?? 0);
+            $rewrite_passes[] = [
+                'source' => $old_url,
+                'target' => $new_url,
+                'tables' => (int) ($pass['tables'] ?? 0),
+                'rows' => (int) ($pass['rows'] ?? 0),
+            ];
         }
         update_option('home', untrailingslashit($target_home));
         update_option('siteurl', untrailingslashit($target_site));
@@ -946,6 +976,7 @@ function mg_saoluu_restore_zip($backup_file, $restore_files = true, $change_url 
             'target_site' => $target_site,
             'tables' => (int) ($replace_report['tables'] ?? 0),
             'rows' => (int) ($replace_report['rows'] ?? 0),
+            'passes' => $rewrite_passes,
         ];
         if ($restore_files) {
             $copy = mg_saoluu_copy_stage_files($stage, $type);
