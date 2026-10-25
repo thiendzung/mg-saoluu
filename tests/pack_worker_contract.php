@@ -70,7 +70,7 @@ wt('worker no longer acquires a second global flock',
 wt('worker uses pack-aware logical Settings hash',
     str_contains($src, 'function mgw_state_hash_line')
     && str_contains($src, '<OPTION_ID>')
-    && str_contains($src, "mgw_state_hash($verify, (string)$job['pack'])"));
+    && str_contains($src, 'mgw_state_hash($verify, (string)$job[\'pack\'])'));
 
 $root=sys_get_temp_dir().'/mgsl-worker-contract-'.bin2hex(random_bytes(4));
 mkdir($root,0700,true);
