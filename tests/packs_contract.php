@@ -54,7 +54,22 @@ check_pack('settings pack excludes volatile scheduler/updater runtime rows',
     && str_contains(mg_saoluu_pack_settings_predicate(), "'rewrite_rules'")
     && str_contains(mg_saoluu_pack_settings_predicate(), "'auto_updater.lock'")
     && str_contains(mg_saoluu_pack_settings_predicate(), "'core_updater.lock'")
-    && mg_saoluu_pack_settings_scope()==='exclude_transients_runtime_v2');
+    && mg_saoluu_pack_settings_scope()==='exclude_transients_runtime_v3');
+
+check_pack('settings dump uses one row per statement for logical hashing',
+    in_array('--skip-extended-insert', mg_saoluu_pack_dump_options('settings', '/usr/bin/mysqldump'), true));
+
+$hash_a=$dir.'/settings-a.sql';
+$hash_b=$dir.'/settings-b.sql';
+$hash_c=$dir.'/settings-c.sql';
+file_put_contents($hash_a, "REPLACE INTO `wp_options` VALUES (17,'blogdescription','Find Art That Feels Like You','yes');\n");
+file_put_contents($hash_b, "REPLACE INTO `wp_options` VALUES (999,'blogdescription','Find Art That Feels Like You','yes');\n");
+file_put_contents($hash_c, "REPLACE INTO `wp_options` VALUES (999,'blogdescription','Different value','yes');\n");
+check_pack('settings state hash ignores physical option_id only',
+    mg_saoluu_pack_state_hash_file($hash_a,'settings')===mg_saoluu_pack_state_hash_file($hash_b,'settings'));
+check_pack('settings state hash still detects option value changes',
+    mg_saoluu_pack_state_hash_file($hash_a,'settings')!==mg_saoluu_pack_state_hash_file($hash_c,'settings'));
+@unlink($hash_a); @unlink($hash_b); @unlink($hash_c);
 
 $content_tables=mg_saoluu_pack_tables('content');
 check_pack('content pack keeps complete WordPress content dependency group',
