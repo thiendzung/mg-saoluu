@@ -645,7 +645,9 @@ function mg_saoluu_restore_pack($backup_file, $password) {
     if (is_wp_error($cleanup)) { @unlink($job_config); @unlink($target_sql); return $cleanup; }
     $journal = $work . '/journal.json';
     $job_file = $work . '/job.json';
-    $global_lock = trailingslashit(mg_saoluu_private_temp_dir()) . 'mg-saoluu-operation.lock';
+    $private_temp = mg_saoluu_private_temp_dir();
+    if (is_wp_error($private_temp)) { @unlink($job_config); @unlink($target_sql); return $private_temp; }
+    $global_lock = trailingslashit($private_temp) . 'mg-saoluu-operation.lock';
 
     $job = [
         'version' => 1,
