@@ -5,7 +5,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     if (!current_user_can('manage_options')) wp_die('Bạn không có quyền thực hiện.');
     check_admin_referer('mg_saoluu_secure', 'mg_nonce');
     $action = sanitize_key(wp_unslash($_POST['mg_action']));
-    if (in_array($action,['backup','pack_backup','pack_restore','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
+    if (in_array($action,['backup','pack_backup','pack_restore','pack_restore_upload','restore_saved','restore_zip_upload','restore_sql_upload','verify_backup'],true)) mg_saoluu_debug_log('action_received',['phase'=>$action]);
 
     // v1.2.1 concentrates on BACKUP/RESTORE. Existing transfer and deploy
     // implementation/options remain on disk for a future migration, but no
@@ -393,6 +393,48 @@ function mg_saoluu_handle_actions(&$message, &$status) {
                 mg_saoluu_log_event('pack_backup', 'Tạo Pack backup', ['file'=>$result,'pack'=>$pack]);
                 $status='success';
                 $message='Đã tạo Pack mã hóa: ' . $result . '.';
+            }
+            return;
+        }
+
+        if ($action === 'pack_restore_upload') {
+            if (mg_saoluu_environment() === 'production') {
+                $status='error'; $message='RC10 khóa Pack Restore trên Production. Chỉ thử trên clone/staging.'; return;
+            }
+            if (!isset($_POST['pack_restore_confirm'])) {
+                $status='error'; $message='Hãy xác nhận phục hồi đúng Pack đã chọn.'; return;
+            }
+            $self = mg_saoluu_self_integrity();
+            if (empty($self['ok'])) {
+                $status='error'; $message='Đã khóa Pack Restore vì integrity plugin không đạt.'; return;
+            }
+
+            $uploaded = mg_saoluu_stage_pack_upload($_FILES['pack_file'] ?? null);
+            if (is_wp_error($uploaded)) {
+                $status='error'; $message=$uploaded->get_error_message(); return;
+            }
+
+            try {
+                $password = (string) wp_unslash($_POST['backup_password'] ?? '');
+                if ($password === '' && mg_saoluu_encryption_constant_available()) $password = (string) MG_SAOLUU_ENCRYPTION_KEY;
+                if ($password === '') $password = mg_saoluu_managed_encryption_key(false);
+                if ($password === '') {
+                    $status='error'; $message='Không có Recovery Key để mở Pack.'; return;
+                }
+
+                $result = mg_saoluu_restore_pack($uploaded, $password, $lock);
+                if (is_wp_error($result)) {
+                    $status='error'; $message=$result->get_error_message();
+                } else {
+                    mg_saoluu_log_event('pack_restore_upload_queued', 'Đã xếp Restore từ file local', [
+                        'pack'=>$result['pack'] ?? '',
+                        'job_id'=>$result['job_id'] ?? '',
+                    ]);
+                    $status='success';
+                    $message='File local đã được xác minh và xếp Restore worker. Job ' . ($result['job_id'] ?? '') . ' sẽ hậu kiểm trước khi báo hoàn tất.';
+                }
+            } finally {
+                if (is_string($uploaded) && is_file($uploaded) && !is_link($uploaded)) @unlink($uploaded);
             }
             return;
         }
