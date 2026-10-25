@@ -92,9 +92,9 @@ ui_check('client upload validation checks extension and size',
     && str_contains($js, 'wrongType')
     && str_contains($js, 'allowed.some'));
 
-$verify_pos = strpos($actions, "if ($action === 'verify_restore_upload')");
-$backup_pos = strpos($actions, "if ($action === 'backup')", $verify_pos === false ? 0 : $verify_pos);
-$restore_pos = strpos($actions, "if ($action === 'restore_zip_upload')");
+$verify_pos = strpos($actions, "if (\$action === 'verify_restore_upload')");
+$backup_pos = strpos($actions, "if (\$action === 'backup')", $verify_pos === false ? 0 : $verify_pos);
+$restore_pos = strpos($actions, "if (\$action === 'restore_zip_upload')");
 $verify_block = ($verify_pos !== false && $backup_pos !== false && $backup_pos > $verify_pos)
     ? substr($actions, $verify_pos, $backup_pos - $verify_pos)
     : '';
