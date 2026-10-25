@@ -48,6 +48,14 @@ check_pack('settings pack excludes WordPress transient rows',
     str_contains(mg_saoluu_pack_settings_predicate(), "LEFT(option_name,11) <> '_transient_'")
     && str_contains(mg_saoluu_pack_settings_predicate(), "LEFT(option_name,16) <> '_site_transient_'"));
 
+check_pack('settings pack excludes volatile scheduler/updater runtime rows',
+    str_contains(mg_saoluu_pack_settings_predicate(), "option_name NOT IN")
+    && str_contains(mg_saoluu_pack_settings_predicate(), "'cron'")
+    && str_contains(mg_saoluu_pack_settings_predicate(), "'rewrite_rules'")
+    && str_contains(mg_saoluu_pack_settings_predicate(), "'auto_updater.lock'")
+    && str_contains(mg_saoluu_pack_settings_predicate(), "'core_updater.lock'")
+    && mg_saoluu_pack_settings_scope()==='exclude_transients_runtime_v2');
+
 $content_tables=mg_saoluu_pack_tables('content');
 check_pack('content pack keeps complete WordPress content dependency group',
     is_array($content_tables)
