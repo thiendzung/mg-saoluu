@@ -118,7 +118,10 @@ $GLOBALS['test_environment']='local';
 
 class FixtureRawOptionsDB {
     public string $options='wp_options';
-    public function prepare($sql, ...$args){return $sql;}
+    public function prepare($sql, ...$args){
+        foreach ($args as $arg) $sql = preg_replace('/%s/', "'" . addslashes((string) $arg) . "'", $sql, 1);
+        return $sql;
+    }
     public function get_var($sql){return str_contains($sql, 'blog_public') ? '1' : null;}
 }
 $GLOBALS['wpdb']=new FixtureRawOptionsDB();
@@ -332,7 +335,7 @@ test('maintenance symlink cannot overwrite outside sentinel',
 @unlink(ABSPATH . '.maintenance');
 
 // Regression from RC3 runtime: baseline had 12 DB objects, migration produced 83,
-// and checkpoint import alone left all 83. RC5 must retain RC4 schema reconciliation exactly to 12.
+// and checkpoint import alone left all 83. RC6 must retain RC4 schema reconciliation exactly to 12.
 class FixtureSchemaDB {
  public array $objects;
  public array $queries=[];
