@@ -11,7 +11,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
         'pack_backup','pack_restore','pack_restore_upload','verify_restore_upload','restore_sql_upload',
         'security_generate_device','security_pair_code','security_import_pair','security_revoke_signer',
         'security_restore_challenge','security_sign_restore_challenge','security_apply_restore_approval','security_lock_restore',
-        'setup_environment','setup_security','save_security','save_settings'
+        'setup_environment','setup_security','save_security','save_settings','security_show_recovery_key','security_import_recovery_key'
     ], true)) {
         $status = 'error';
         $message = 'v1.3.1 đã đơn giản hóa: chỉ dùng Full Site Backup và Full Site Restore.';

@@ -1,5 +1,5 @@
 <?php
-/** v1.3.2-rc1 simple Backup/Restore static contracts; no WordPress bootstrap. */
+/** v1.3.2-rc2 simple Backup/Restore static contracts; no WordPress bootstrap. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 
 $plugin = rtrim((string)(getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/');
@@ -23,12 +23,13 @@ $environment = src($plugin, 'includes/environment.php');
 $diagnostics = src($plugin, 'includes/diagnostics.php');
 $actions = src($plugin, 'admin/actions.php');
 $render = src($plugin, 'admin/render.php');
+$recovery = src($plugin, 'admin/recovery-key.php');
 $js = src($plugin, 'assets/js/admin.js');
 $css = src($plugin, 'assets/css/admin.css');
 
-ui_check('v1.3.2-rc1 version is explicit',
-    str_contains($main, "Version: 1.3.2-rc1")
-    && str_contains($main, "define('MG_SAOLUU_VERSION', '1.3.2-rc1')"));
+ui_check('v1.3.2-rc2 version is explicit',
+    str_contains($main, "Version: 1.3.2-rc2")
+    && str_contains($main, "define('MG_SAOLUU_VERSION', '1.3.2-rc2')"));
 
 ui_check('new install skips environment/security wizard',
     str_contains($lifecycle, "add_option('mg_saoluu_setup_complete', '1'")
@@ -109,6 +110,23 @@ ui_check('pack and signer concepts are absent from active simple UI function',
     && !str_contains(substr($render, $start, $end - $start), 'Local')
     && !str_contains(substr($render, $start, $end - $start), 'Production')
     && !str_contains(substr($render, $start, $end - $start), 'MGAPPROVE1'));
+
+ui_check('simple Recovery Key form has separate authenticated same-origin POST',
+    str_contains($render, 'mg_saoluu_reveal_recovery_key')
+    && str_contains($render, "wp_nonce_field('mg_saoluu_reveal_recovery_key', 'mg_recovery_nonce')")
+    && str_contains($render, "admin_url('admin-post.php')")
+    && str_contains($render, 'name="admin_password"')
+    && str_contains($recovery, "current_user_can('manage_options')")
+    && str_contains($recovery, "check_admin_referer('mg_saoluu_reveal_recovery_key', 'mg_recovery_nonce')"));
+
+ui_check('disclosure uses only existing key and no plaintext transient',
+    str_contains($recovery, 'mg_saoluu_managed_encryption_key(false)')
+    && !str_contains($recovery, 'mg_saoluu_managed_encryption_key(true)')
+    && !str_contains($recovery, 'set_transient(')
+    && !str_contains($recovery, 'update_option(')
+    && str_contains($recovery, 'no-store')
+    && str_contains($recovery, 'is_ssl()')
+    && str_contains($actions, "'security_show_recovery_key','security_import_recovery_key'"));
 
 ui_check('admin CSS and JS packaged assets remain non-empty',
     strlen($css) > 5000 && strlen($js) > 3000);

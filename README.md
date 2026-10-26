@@ -1,10 +1,10 @@
-# MG Sao Lưu — v1.3.1 stable / v1.3.2-rc1 P2A checkpoint candidate
+# MG Sao Lưu — v1.3.1 stable / v1.3.2-rc2 P2B-R1 candidate
 
 MG Sao Lưu is a WordPress backup and restore plugin. The stable v1.3.1 active admin surface offers **Full Site Backup** and **Full Site Restore**. Backups use native mysqldump, ZIP payload SHA-256, a signed manifest, and storage outside webroot. Recovery must be proven on an independent clone; archive verification is **not** restore proof.
 
-## P2A pre-deploy DB checkpoint (not released; issue #66)
+## P2A pre-deploy DB checkpoint (merged #67, Local accepted R12)
 
-This branch adds three WP-CLI-only commands:
+P2A includes three WP-CLI-only commands:
 
 ```sh
 wp mg-saoluu backup --components=database --reason=pre-deploy --ref=<FULL_GIT_SHA> --format=json
@@ -20,6 +20,14 @@ wp mg-saoluu verify --id=<BACKUP_ID> --format=json
 - `verify` reads a checkpoint and checks its manifest, ZIP payload hashes, signature and saved archive checksum; no database import. `list` reports stored status rather than claiming it re-verified archives.
 - A checkpoint alone is **not** an adequate Production recovery backup: DB + files, independently stored copy and clone restore evidence are separately mandatory under MOTGU_07.
 
+## P2B-R1 Recovery Key disclosure (source candidate)
+
+- The active admin UI keeps exactly three tabs. The **Sao lưu** tab adds a small **Recovery Key** area which POSTs to a dedicated authenticated admin endpoint.
+- Requires HTTPS, WordPress nonce, administrator capability and current password (bounded rate limits); only the existing managed or configured key is displayed on a **no-store/no-referrer** response. It is not saved to a transient or created/rotated by this action.
+- The old hidden `security_show_recovery_key` / `security_import_recovery_key` handlers are explicitly blocked; no legacy Settings tab is reactivated.
+- A displayed key is **not evidence of off-device escrow**. R2 encrypted-backup/offsite implementation and R3 recovery kit require separate acceptance.
+- R10 Full Backup remains plaintext and offsite unverified. Production NO-GO.
+
 ## Clone QA before any install
 
 1. Verify exact PR SHA and use a **disposable clone** with its own DB and user, with no access to `motgu.test` or Production DB.
@@ -31,8 +39,8 @@ wp mg-saoluu verify --id=<BACKUP_ID> --format=json
 7. Compare application DB state before/after backup; no Woo/WordPress/MG-OS rows may be intentionally updated by the checkpoint.
 8. Document exact SHA, plugin folder name, active plugin, backup hashes, test evidence, disposal, and production untouched. Founder must approve any local runtime installation separately.
 
-**Important Local observation (2026-10-26):** On `motgu.test`, `mg-saoluu-2` v1.3.1 is active and `mg-saoluu` v1.3.0-rc13 is inactive. Do not enable both or overwrite either before an explicit single-active-plugin cutover and rollback plan.
+**Important Local observation (2026-10-26):** On `motgu.test`, `mg-saoluu-2` v1.3.2-rc1 is active (Agent Local R12 report) and `mg-saoluu` v1.3.0-rc13 is inactive. Do not enable both or overwrite either without separately approved R1 Local cutover and rollback proof.
 
-Historical RC/Pack/migration references remain in `CHANGELOG.md` and `docs/releases/`; they do **not** describe the active v1.3.1 UI or authorize Production restore.
+Historical RC/Pack/migration references remain in `CHANGELOG.md` and `docs/releases/`; they do **not** describe the active simple three-tab UI or authorize Production restore.
 
 See [Recovery Runbook](RECOVERY_RUNBOOK.md), [Release QA](docs/RELEASE_QA.md) and [Issue #66](https://github.com/thiendzung/mg-saoluu/issues/66).

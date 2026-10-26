@@ -1,4 +1,4 @@
-# MG Sao Lưu — Recovery Runbook (stable v1.3.1 + P2A candidate)
+# MG Sao Lưu — Recovery Runbook (stable v1.3.1 / Local P2A rc1 / P2B-R1 rc2 candidate)
 
 ## 1. Before a release
 
@@ -7,7 +7,7 @@
 - Confirm the recovery set was independently restored on an isolated WordPress clone. Record verified archive SHA-256, SQL/payload hashes, schema inventory, sample records, media and elapsed restore time. Hash-verified is **not** restore-tested.
 - Use isolated clone DB/user, blocked real email/payment/webhooks and indexing. Never use `motgu.test` as a disposable clone.
 
-## 2. P2A DB checkpoint (candidate; not deployed)
+## 2. P2A DB checkpoint (Local R12 PASS; Production not deployed)
 
 ```sh
 wp mg-saoluu backup --components=database --reason=pre-deploy --ref=<FULL_GIT_SHA> --format=json
@@ -40,4 +40,10 @@ wp mg-saoluu verify --id=<BACKUP_ID> --format=json
 
 Invalid site identity, unknown DB target, non-InnoDB table, schema drift, missing binary, symlink/path traversal, altered ZIP/hash, stale metadata, disk shortfall, lock contention, outbound live provider exposure, or absent clone recovery evidence => **STOP / NO-GO**.
 
-Historical 1.2.x/1.3.0 Local-to-Host transfer, signing challenge and Pack Restore experiments are **not** instructions for the active v1.3.1 product.
+## P2B-R1 Recovery Key retrieval
+
+- On candidate v1.3.2-rc2, use **Sao lưu → Recovery Key** after entering the current admin password over HTTPS. The display is one-request/no-store only; never copy the key to chats, tickets, browser logs or Git.
+- Keep the existing Recovery Key and original WordPress salts in independently accessible secure storage; a display-only event is not proof of off-device recovery. The plugin does not mint a new key during this view.
+- Plaintext R10 backup stays protected, unchanged and not uploaded. Encrypted backup/offsite and host-loss restoration are later separately authorized gates.
+
+Historical 1.2.x/1.3.0 Local-to-Host transfer, signing challenge and Pack Restore experiments are **not** instructions for the current simple three-tab product.

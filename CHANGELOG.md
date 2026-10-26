@@ -1,3 +1,10 @@
+## 1.3.2-rc2 — P2B-R1 existing Recovery Key view (2026-10-26)
+
+- Keep the existing three-tab UI; add a scoped Recovery Key view under Backup, authenticated with HTTPS, WordPress nonce, admin capability and password/rate limits.
+- Read only the existing Recovery Key in an explicit POST-only no-store response; no key generation, rotation, plaintext transient or old Settings UI.
+- Block old Recovery Key view/import POST actions and add synthetic security/negative-control contract tests.
+- No encrypted backup/offsite changes, no schema migration, no Production deployment authorization.
+
 ## 1.3.1 — Simple Full Backup & Restore (2026-10-25)
 
 - Collapse the active product surface to three tabs: Backup, Restore and Saved Backups.
