@@ -122,16 +122,34 @@ function mg_saoluu_cli_backup($args, $assoc) {
     mg_saoluu_cli_json($result);
 }
 
+/** Read-only catalog path: do not chmod or create storage on list/verify. */
+function mg_saoluu_cli_readonly_backup_dir() {
+    $configured = defined('MG_SAOLUU_BACKUP_DIR') && MG_SAOLUU_BACKUP_DIR;
+    $candidate = $configured ? mg_saoluu_normalize_path(MG_SAOLUU_BACKUP_DIR) : mg_saoluu_storage_default_path();
+    if (!mg_saoluu_storage_path_safe($candidate) || !is_dir($candidate) || is_link($candidate) || !is_readable($candidate)) {
+        return new WP_Error('backup_storage_unavailable', 'Backup storage is not safely readable.');
+    }
+    return trailingslashit(wp_normalize_path($candidate));
+}
+
+function mg_saoluu_cli_readonly_backup_files($dir) {
+    $files = array_merge((array) glob($dir . 'backup_*.zip'), (array) glob($dir . 'backup_*.mgbackup'));
+    $files = array_values(array_filter(array_unique($files), static function ($path) {
+        return !is_link($path) && is_file($path) && is_readable($path);
+    }));
+    usort($files, static function ($a, $b) { return filemtime($b) <=> filemtime($a); });
+    return $files;
+}
+
 /** CLI: wp mg-saoluu list --format=json */
 function mg_saoluu_cli_list($args, $assoc) {
     $valid = mg_saoluu_cli_options($args, $assoc, ['format']);
     if (is_wp_error($valid)) mg_saoluu_cli_fail($valid->get_error_code());
-    $safe = mg_saoluu_storage_preflight();
-    if (is_wp_error($safe)) mg_saoluu_cli_fail($safe->get_error_code());
-    $dir = mg_saoluu_get_backup_dir();
+    $dir = mg_saoluu_cli_readonly_backup_dir();
+    if (is_wp_error($dir)) mg_saoluu_cli_fail($dir->get_error_code());
     $metadata = mg_saoluu_read_metadata($dir . 'metadata.json');
     $items = [];
-    foreach (mg_saoluu_list_backup_files(true) as $path) {
+    foreach (mg_saoluu_cli_readonly_backup_files($dir) as $path) {
         if (is_link($path) || !is_file($path)) continue;
         $name = basename($path);
         if (!mg_saoluu_is_backup_filename($name)) continue;
@@ -154,12 +172,11 @@ function mg_saoluu_cli_verify($args, $assoc) {
     $valid = mg_saoluu_cli_options($args, $assoc, ['id', 'format']);
     if (is_wp_error($valid)) mg_saoluu_cli_fail($valid->get_error_code());
     if (!preg_match('/\Ac[0-9a-f]{32}\z/D', $assoc['id'])) mg_saoluu_cli_fail('invalid_backup_id');
-    $safe = mg_saoluu_storage_preflight();
-    if (is_wp_error($safe)) mg_saoluu_cli_fail($safe->get_error_code());
-    $dir = mg_saoluu_get_backup_dir();
+    $dir = mg_saoluu_cli_readonly_backup_dir();
+    if (is_wp_error($dir)) mg_saoluu_cli_fail($dir->get_error_code());
     $metadata = mg_saoluu_read_metadata($dir . 'metadata.json');
     $target = null;
-    foreach (mg_saoluu_list_backup_files(true) as $path) {
+    foreach (mg_saoluu_cli_readonly_backup_files($dir) as $path) {
         if (is_link($path) || !is_file($path)) continue;
         $name = basename($path);
         if (mg_saoluu_is_backup_filename($name) && mg_saoluu_cli_backup_id($name) === $assoc['id']) {
