@@ -111,7 +111,7 @@ function mg_saoluu_cli_backup($args, $assoc) {
     if ($assoc['components'] !== 'database' || $assoc['reason'] !== 'pre-deploy') {
         mg_saoluu_cli_fail('invalid_checkpoint_scope');
     }
-    if (!preg_match('/\\A(?:[0-9a-f]{40}|[0-9a-f]{64})\\z/iD', $assoc['ref'])) {
+    if (!preg_match('/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/iD', $assoc['ref'])) {
         mg_saoluu_cli_fail('invalid_git_ref');
     }
     $token = mg_saoluu_acquire_lock();
@@ -156,7 +156,7 @@ function mg_saoluu_cli_list($args, $assoc) {
 function mg_saoluu_cli_verify($args, $assoc) {
     $valid = mg_saoluu_cli_options($args, $assoc, ['id', 'format']);
     if (is_wp_error($valid)) mg_saoluu_cli_fail($valid->get_error_code());
-    if (!preg_match('/\\Ac[0-9a-f]{32}\\z/D', $assoc['id'])) mg_saoluu_cli_fail('invalid_backup_id');
+    if (!preg_match('/\Ac[0-9a-f]{32}\z/D', $assoc['id'])) mg_saoluu_cli_fail('invalid_backup_id');
     $safe = mg_saoluu_storage_preflight();
     if (is_wp_error($safe)) mg_saoluu_cli_fail($safe->get_error_code());
     $dir = mg_saoluu_get_backup_dir();
@@ -178,7 +178,7 @@ function mg_saoluu_cli_verify($args, $assoc) {
         mg_saoluu_cli_fail('checkpoint_not_allowed');
     }
     $digest = hash_file('sha256', $target);
-    if (!is_string($digest) || !preg_match('/\\A[a-f0-9]{64}\\z/D', (string) ($meta['integrity_sha256'] ?? ''))
+    if (!is_string($digest) || !preg_match('/\A[a-f0-9]{64}\z/D', (string) ($meta['integrity_sha256'] ?? ''))
         || !hash_equals((string) $meta['integrity_sha256'], $digest)) {
         mg_saoluu_cli_fail('archive_hash_mismatch');
     }
