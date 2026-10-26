@@ -41,3 +41,6 @@ if (function_exists('wp_cache_add_non_persistent_groups')) {
 // Old options remain untouched; old POST actions are explicitly blocked in admin/actions.php.
 require_once MG_SAOLUU_DIR . 'admin/actions.php';
 require_once MG_SAOLUU_DIR . 'admin/render.php';
+if (defined('WP_CLI') && WP_CLI) {
+    require_once MG_SAOLUU_DIR . 'includes/cli.php';
+}
