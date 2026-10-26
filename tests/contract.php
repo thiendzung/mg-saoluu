@@ -66,7 +66,7 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.3.2-rc1');
+define('MG_SAOLUU_VERSION', '1.3.2-rc2');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
@@ -97,7 +97,7 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('v1.3.2-rc1 version constant promoted', MG_SAOLUU_VERSION === '1.3.2-rc1');
+test('v1.3.2-rc2 version constant promoted', MG_SAOLUU_VERSION === '1.3.2-rc2');
 test('self-integrity cache does not create DB transient',
     !array_filter(array_keys($GLOBALS['test_transients']), static fn($k)=>str_contains((string)$k,'self_integrity')));
 
@@ -639,9 +639,9 @@ foreach(['data_export','data_import','deploy_create','deploy_install','delete_da
  mg_saoluu_handle_actions($message,$status);
  test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
 }
-// v1.3.2-rc1 has one environment-neutral restore flow.
+// v1.3.2-rc2 has one environment-neutral restore flow.
 $restore_source = file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php');
-test('v1.3.2-rc1 restore forces Full Site plus automatic URL rewrite',
+test('v1.3.2-rc2 restore forces Full Site plus automatic URL rewrite',
     str_contains($restore_source, '$restore_files = true;')
     && str_contains($restore_source, '$change_url = true;')
     && str_contains($restore_source, "'domain_rewrite'"));

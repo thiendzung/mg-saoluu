@@ -1,6 +1,12 @@
-# MG Sao Lưu — v1.3.1 stable / v1.3.2-rc1 P2A checkpoint candidate
+# MG Sao Lưu — v1.3.1 stable / v1.3.2-rc2 P2B-R1 candidate
 
 MG Sao Lưu is a WordPress backup and restore plugin. The stable v1.3.1 active admin surface offers **Full Site Backup** and **Full Site Restore**. Backups use native mysqldump, ZIP payload SHA-256, a signed manifest, and storage outside webroot. Recovery must be proven on an independent clone; archive verification is **not** restore proof.
+
+## P2B-R1: Local-only Recovery Key disclosure (issue #69)
+
+The active three-tab UI remains unchanged except for a Recovery Key section in **Sao lưu** on Local. Disclosure uses `admin-post.php` with a dedicated nonce, `manage_options`, current-admin-password reauthentication and bounded attempt controls. It shows the **existing** key in a no-store/no-referrer HTML response without persisting plaintext in a WordPress transient or changing the key. The legacy transient-based show/import POST actions are blocked. A view is **not** evidence of off-device escrow. No backup encryption, offsite upload, Production restore, or recovery of original WordPress salts is enabled by R1.
+
+**Do not email, commit or log any key.** Record off-device password manager and independent `wp-config.php`/salts recovery separately before P2B-R2/R3.
 
 ## P2A pre-deploy DB checkpoint (not released; issue #66)
 
