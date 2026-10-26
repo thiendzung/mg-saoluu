@@ -133,6 +133,24 @@ function mg_saoluu_render_simple_page() {
                 </form>
                 <p class="mgsl-small">Tự bỏ qua cache, backup cũ, wp-config.php và file cấu hình server. Backup được lưu ngoài webroot.</p>
             </section>
+            <section class="mgsl-card" aria-labelledby="mgsl-recovery-title">
+                <h2 id="mgsl-recovery-title" class="mgsl-title">Recovery Key</h2>
+                <p>Chỉ xem khóa đã có để lưu an toàn ngoài máy Mac. Thao tác này không tạo, thay đổi hoặc kiểm chứng bản sao lưu.</p>
+                <?php if (is_ssl()): ?>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" target="_blank" rel="noopener" autocomplete="off">
+                    <input type="hidden" name="action" value="mg_saoluu_reveal_recovery_key">
+                    <?php wp_nonce_field('mg_saoluu_reveal_recovery_key', 'mg_recovery_nonce'); ?>
+                    <div class="mgsl-field">
+                        <label for="mgsl-recovery-admin-password">Mật khẩu quản trị hiện tại</label>
+                        <input id="mgsl-recovery-admin-password" name="admin_password" type="password" autocomplete="current-password" required>
+                    </div>
+                    <button type="submit" class="button" <?php disabled(empty($self['ok'])); ?>>Xem Recovery Key hiện có</button>
+                </form>
+                <?php else: ?>
+                <p class="mgsl-note mgsl-warning" role="alert">Chỉ có thể xem Recovery Key qua HTTPS. Không nhập mật khẩu khi đang dùng HTTP.</p>
+                <?php endif; ?>
+                <p class="mgsl-small">Mở trong tab riêng, chỉ qua HTTPS. Lưu vào password manager và đóng tab; không gửi khóa qua chat/email.</p>
+            </section>
 
         <?php elseif ($active === 'restore'): ?>
             <section class="mgsl-card">

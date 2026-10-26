@@ -44,7 +44,9 @@ function mg_saoluu_encryption_password($provided = '') {
     $provided = (string) $provided;
     if ($provided !== '') return $provided;
     if (mg_saoluu_encryption_constant_available()) return (string) MG_SAOLUU_ENCRYPTION_KEY;
-    return mg_saoluu_managed_encryption_key(true);
+    // A scheduled or other default-password backup must not silently mint a key.
+    // With no existing key, encryption fails closed; R2 must provision explicitly.
+    return mg_saoluu_managed_encryption_key(false);
 }
 
 function mg_saoluu_is_encrypted_backup($path) {

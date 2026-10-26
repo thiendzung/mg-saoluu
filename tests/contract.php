@@ -66,7 +66,7 @@ register_shutdown_function(function()use($root){cleanup($root);});
 $base = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/') . '/includes/';
 define('MG_SAOLUU_DIR', dirname(rtrim($base, '/')) . '/');
 define('MG_SAOLUU_FILE', ABSPATH . 'wp-content/plugins/mg-saoluu/mg-saoluu.php');
-define('MG_SAOLUU_VERSION', '1.3.2-rc1');
+define('MG_SAOLUU_VERSION', '1.3.2-rc2');
 function add_action(){}
 function mg_saoluu_environment(){return (string) ($GLOBALS['test_environment'] ?? 'local');}
 function mg_saoluu_is_local_environment(){return mg_saoluu_environment()==='local';}
@@ -97,7 +97,7 @@ if (in_array('--unsafe-config', $argv ?? [], true)) {
     exit(0);
 }
 test('plugin integrity hashes match packaged source',mg_saoluu_self_integrity(true)['ok']===true);
-test('v1.3.2-rc1 version constant promoted', MG_SAOLUU_VERSION === '1.3.2-rc1');
+test('v1.3.2-rc2 version constant promoted', MG_SAOLUU_VERSION === '1.3.2-rc2');
 test('self-integrity cache does not create DB transient',
     !array_filter(array_keys($GLOBALS['test_transients']), static fn($k)=>str_contains((string)$k,'self_integrity')));
 
@@ -628,20 +628,72 @@ if (!mg_saoluu_find_binary('mysqldump')) {
  $r=mg_saoluu_run_mysqldump($external.'dump-fixture.sql');
  test('missing mysqldump CLI fails closed',is_wp_error($r)&&$r->get_error_code()==='mysqldump_required');
 }
-// Old URL/hidden action cannot invoke transfer or deployment even with nonce.
+// Deny-by-default even for valid admin + nonce. The UI's only active
+// mg_action handlers are Full Backup and the two Full Restore routes.
 function current_user_can($cap){return true;}
 function check_admin_referer($a,$b){return true;}
 function wp_unslash($v){return $v;}
 require_once MG_SAOLUU_DIR.'admin/actions.php';
 $_SERVER['REQUEST_METHOD']='POST';
-foreach(['data_export','data_import','deploy_create','deploy_install','delete_data_package','delete_deploy_package'] as $legacy){
- $_POST=['mg_action'=>$legacy];$message='';$status='';
- mg_saoluu_handle_actions($message,$status);
- test('legacy POST blocked: '.$legacy,$status==='error'&&str_contains($message,'tạm khóa'));
+foreach (['backup','restore_saved','restore_zip_upload'] as $active_action) {
+ test('active simple POST allowlisted: '.$active_action,
+    mg_saoluu_simple_post_action_allowed($active_action) === true);
 }
-// v1.3.2-rc1 has one environment-neutral restore flow.
+foreach (['save_storage','setup_environment','setup_storage','setup_security',
+ 'setup_test','setup_finish','save_drive_settings','drive_disconnect','drive_test',
+ 'drive_upload','save_security','security_generate_device','security_pair_code',
+ 'security_import_pair','security_revoke_signer','security_restore_challenge',
+ 'security_sign_restore_challenge','security_apply_restore_approval',
+ 'security_lock_restore','security_show_recovery_key','security_import_recovery_key',
+ 'save_tools','toggle_protect','verify_backup','clear_log','save_settings',
+ 'unlock_production','unlock_deploy_production','lock_production','lock_deploy_production',
+ 'delete','pack_backup','pack_restore','pack_restore_upload','verify_restore_upload',
+ 'restore_sql_upload','data_export','data_import','delete_data_package',
+ 'delete_deploy_package','deploy_create','deploy_install','unknown_hidden_action'] as $legacy) {
+ test('hidden/unknown simple POST not allowlisted: '.$legacy,
+    mg_saoluu_simple_post_action_allowed($legacy) === false);
+}
+// Suppress the fixture's existing managed key to catch any hidden key mint.
+$previous_options = $GLOBALS['test_options'];
+unset($GLOBALS['test_options']['mg_saoluu_managed_encryption_key']);
+$blocked_options = $GLOBALS['test_options'];
+$blocked_transients = $GLOBALS['test_transients'];
+$blocked_files = scandir($external);
+$blocked_post_actions = ['save_storage','setup_test','security_show_recovery_key',
+ 'security_import_recovery_key','save_drive_settings','drive_upload','delete',
+ 'clear_log','save_settings','verify_backup','pack_backup','restore_sql_upload',
+ 'data_import','deploy_create','unknown_hidden_action'];
+foreach ($blocked_post_actions as $legacy) {
+ $_POST=['mg_action'=>$legacy,'encrypt_default'=>'1','drive_auto_upload'=>'1',
+    'recovery_key'=>'attacker-selected-key'];
+ $message='';$status='';
+ mg_saoluu_handle_actions($message,$status);
+ test('legacy POST blocked at handler before effects: '.$legacy,
+    $status==='error'&&str_contains($message,'tạm khóa'));
+}
+$_POST=['mg_action'=>['backup']];$message='';$status='';
+mg_saoluu_handle_actions($message,$status);
+test('non-scalar action denied before sanitization', $status==='error'&&str_contains($message,'tạm khóa'));
+test('blocked POSTs leave options unchanged', $GLOBALS['test_options'] === $blocked_options);
+test('blocked POSTs leave transients unchanged', $GLOBALS['test_transients'] === $blocked_transients);
+test('blocked POSTs leave backup files unchanged', scandir($external) === $blocked_files);
+test('blocked POSTs cannot mint managed key', !isset($GLOBALS['test_options']['mg_saoluu_managed_encryption_key']));
+$GLOBALS['test_options'] = $previous_options;
+// Neither an automatic/scheduled encrypted backup nor a password check
+// may generate a new Recovery Key implicitly when none was saved.
+$prior_encryption_options = $GLOBALS['test_options'];
+unset($GLOBALS['test_options']['mg_saoluu_managed_encryption_key']);
+$missing_key_options = $GLOBALS['test_options'];
+test('default encryption fails closed without an existing key',
+    mg_saoluu_encryption_password('') === ''
+    && $GLOBALS['test_options'] === $missing_key_options);
+test('explicit encryption password remains available without minting a managed key',
+    mg_saoluu_encryption_password('explicit-test-password-strong-123') === 'explicit-test-password-strong-123'
+    && $GLOBALS['test_options'] === $missing_key_options);
+$GLOBALS['test_options'] = $prior_encryption_options;
+// v1.3.2-rc2 has one environment-neutral restore flow.
 $restore_source = file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php');
-test('v1.3.2-rc1 restore forces Full Site plus automatic URL rewrite',
+test('v1.3.2-rc2 restore forces Full Site plus automatic URL rewrite',
     str_contains($restore_source, '$restore_files = true;')
     && str_contains($restore_source, '$change_url = true;')
     && str_contains($restore_source, "'domain_rewrite'"));
