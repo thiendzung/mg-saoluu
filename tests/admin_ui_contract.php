@@ -115,6 +115,7 @@ ui_check('simple Recovery Key form has separate authenticated same-origin POST',
     str_contains($render, 'mg_saoluu_reveal_recovery_key')
     && str_contains($render, "wp_nonce_field('mg_saoluu_reveal_recovery_key', 'mg_recovery_nonce')")
     && str_contains($render, "admin_url('admin-post.php')")
+    && str_contains($render, '<?php if (is_ssl()): ?>')
     && str_contains($render, 'name="admin_password"')
     && str_contains($recovery, "current_user_can('manage_options')")
     && str_contains($recovery, "check_admin_referer('mg_saoluu_reveal_recovery_key', 'mg_recovery_nonce')"));
