@@ -476,13 +476,14 @@ function mg_saoluu_verify_manifest_signature($manifest) {
 }
 
 /** Native CLI only; intentionally no PHP SQL parser/export fallback. */
-function mg_saoluu_run_mysqldump($sql_file) {
+function mg_saoluu_run_mysqldump($sql_file, $full_schema_objects = false) {
     $binary = mg_saoluu_find_binary('mysqldump');
     if (mg_saoluu_exec_available() && $binary) {
         $config = mg_saoluu_create_mysql_config();
         if (!is_wp_error($config)) {
             $version = mg_saoluu_binary_version($binary);
             $options = ['--single-transaction', '--quick', '--skip-lock-tables', '--hex-blob', '--default-character-set=utf8mb4'];
+            if ($full_schema_objects) $options = array_merge($options, ['--triggers', '--routines', '--events']);
             if (stripos($version, 'MariaDB') === false) { $options[] = '--no-tablespaces'; $options[] = '--set-gtid-purged=OFF'; }
             $private_temp = mg_saoluu_private_temp_dir();
             if (is_wp_error($private_temp)) { @unlink($config); return $private_temp; }

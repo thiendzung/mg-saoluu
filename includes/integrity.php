@@ -12,7 +12,7 @@ function mg_saoluu_self_integrity($force = false) {
     $required = [
         'mg-saoluu.php', 'admin/actions.php', 'admin/render.php',
         'includes/lifecycle.php', 'includes/environment.php', 'includes/core.php', 'includes/diagnostics.php', 'includes/crypto.php', 'includes/security.php',
-        'includes/google-drive.php', 'includes/backup.php', 'includes/restore.php', 'includes/catalog.php', 'includes/integrity.php',
+        'includes/google-drive.php', 'includes/backup.php', 'includes/restore.php', 'includes/catalog.php', 'includes/integrity.php', 'includes/cli.php',
         'tools/recovery-verify.php', 'RECOVERY_RUNBOOK.md', 'assets/css/admin.css', 'assets/js/admin.js'
     ];
     $result = ['ok' => true, 'missing' => [], 'mismatch' => [], 'checked' => 0, 'manifest' => false, 'assets' => []];

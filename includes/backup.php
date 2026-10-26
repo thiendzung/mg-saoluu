@@ -64,6 +64,8 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
         'upload_drive' => null,
         'purpose' => 'normal',
         'use_default_encryption' => false,
+        'git_ref' => '',
+        'table_inventory' => null,
     ]);
 
     // Resolve encryption/offsite policy BEFORE creating any SQL/ZIP file.
@@ -78,6 +80,13 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
         return new WP_Error('offsite_requires_encryption', 'Chỉ gửi backup đã mã hóa lên Google Drive; hãy bật mã hóa và lưu Recovery Key trước.');
     }
 
+    if ($options['purpose'] === 'pre-deploy') {
+        if ($type !== 'sql' || $encrypt || $upload_requested ||
+            !preg_match('/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/iD', (string) $options['git_ref']) ||
+            !is_array($options['table_inventory'])) {
+            return new WP_Error('checkpoint_options_invalid', 'Phạm vi hoặc dấu vết của checkpoint không hợp lệ.');
+        }
+    }
     if ($type === 'local_copy' && !$encrypt) return new WP_Error('local_copy_requires_encryption', 'Gói Host → Local bắt buộc mã hóa.');
     $collection = mg_saoluu_collect_backup_files($type);
     if (is_wp_error($collection)) return $collection;
@@ -99,8 +108,15 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
     if (!$sql_handle) return new WP_Error('sql_temp_failed', 'Không tạo được SQL tạm.');
     @chmod($sql_file, 0600);
     fclose($sql_handle);
-    $dump = mg_saoluu_run_mysqldump($sql_file);
+    $dump = mg_saoluu_run_mysqldump($sql_file, $options['purpose'] === 'pre-deploy');
     if (is_wp_error($dump)) { @unlink($sql_file); return $dump; }
+    if ($options['purpose'] === 'pre-deploy') {
+        $after_inventory = mg_saoluu_cli_engine_inventory();
+        if (is_wp_error($after_inventory) || $after_inventory !== $options['table_inventory']) {
+            @unlink($sql_file);
+            return new WP_Error('database_schema_drift', 'Database schema thay đổi trong lúc checkpoint.');
+        }
+    }
     $zip = new ZipArchive();
     if ($zip->open($zip_file, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
         @unlink($sql_file);
@@ -129,6 +145,11 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
     mg_saoluu_zip_fast_compress_index($zip, $zip->numFiles - 1);
     $hashes['database_backup.sql'] = $sql_hash;
     $manifest = mg_saoluu_manifest($type);
+    if ($options['purpose'] === 'pre-deploy') {
+        $manifest['git_ref'] = strtolower((string) $options['git_ref']);
+        $manifest['checkpoint_created_at_utc'] = gmdate('Y-m-d\TH:i:s\Z');
+        $manifest['table_inventory'] = $options['table_inventory'];
+    }
     $manifest['file_count'] = $added;
     $manifest['source_size'] = (int) $collection['size'];
     $manifest['hashes'] = $hashes;
@@ -172,6 +193,13 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
     $final_sha = @hash_file('sha256', $final_path);
     if (!$final_sha) { @unlink($final_path); return new WP_Error('backup_hash_failed', 'Không tính được fingerprint của backup.'); }
 
+    if ($options['purpose'] === 'pre-deploy') {
+        $final_inventory = mg_saoluu_cli_engine_inventory();
+        if (is_wp_error($final_inventory) || $final_inventory !== $options['table_inventory']) {
+            @unlink($final_path);
+            return new WP_Error('database_schema_drift', 'Schema database thay đổi trong lúc tạo checkpoint.');
+        }
+    }
     $metadata_file = $dir . 'metadata.json';
     $metadata = mg_saoluu_read_metadata($metadata_file);
     $metadata[$final_name] = [
@@ -189,6 +217,12 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
         'integrity_sha256' => $final_sha,
         'restore_tested' => false,
     ];
+    if ($options['purpose'] === 'pre-deploy') {
+        $metadata[$final_name]['protected'] = true;
+        $metadata[$final_name]['git_ref'] = strtolower((string) $options['git_ref']);
+        $metadata[$final_name]['sql_sha256'] = $sql_hash;
+        $metadata[$final_name]['checkpoint_created_at_utc'] = $manifest['checkpoint_created_at_utc'];
+    }
     if (!mg_saoluu_save_metadata($metadata_file, $metadata)) {
         return new WP_Error('catalog_write_failed', 'Backup đã được tạo nhưng catalog không lưu được; hãy kiểm tra trước khi coi là an toàn: ' . $final_name);
     }
@@ -250,7 +284,7 @@ function mg_saoluu_apply_retention() {
         $name = basename($file);
         if (!mg_saoluu_is_backup_filename($name)) continue;
         $group = mg_saoluu_retention_group($name, $metadata[$name] ?? []);
-        if (!empty($metadata[$name]['protected'])) continue; // Not part of disposable quota.
+        if (!empty($metadata[$name]['protected']) || strpos($name, 'backup_predeploy_sql_') === 0) continue; // Never auto-prune a deploy checkpoint.
         $counts[$group]++;
         if ($counts[$group] <= $limits[$group]) continue;
         if ($group === 'safe_full' && $full_files <= 1) continue;

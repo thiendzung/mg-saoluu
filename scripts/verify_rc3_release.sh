@@ -24,6 +24,7 @@ find . -type f -name '*.php' ! -path './.git/*' -print0 | xargs -0 -n 1 php -l
 
 echo "=== SOURCE: integrity, contracts and unsafe config ==="
 php tests/integrity_manifest.php
+php tests/p2a_cli_contract.php
 php tests/contract.php
 php tests/contract.php --unsafe-config
 php tests/schedule_health.php
@@ -31,7 +32,7 @@ php tests/packs_contract.php
 php tests/pack_worker_contract.php
 php tests/admin_ui_contract.php
 
-ZIP="$TMP/mg-saoluu-v1.3.1.zip"
+ZIP="$TMP/mg-saoluu-v1.3.2-rc1.zip"
 echo "=== PACKAGE: deterministic ZIP + CRC/payload ==="
 python3 scripts/package_release.py --out "$ZIP"
 unzip -t "$ZIP"
@@ -41,6 +42,7 @@ echo "=== EXTRACTED ZIP: integrity, contracts and unsafe config ==="
 export MGSL_TEST_PLUGIN_DIR="$TMP/extracted/mg-saoluu"
 test -f "$MGSL_TEST_PLUGIN_DIR/mg-saoluu.php"
 php tests/integrity_manifest.php
+php tests/p2a_cli_contract.php
 php tests/contract.php
 php tests/contract.php --unsafe-config
 php tests/schedule_health.php

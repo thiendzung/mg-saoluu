@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MG Sao Lưu & Khôi Phục An Toàn
  * Description: Sao lưu, xác minh, lưu ngoài hosting và khôi phục WordPress có kiểm soát.
- * Version: 1.3.1
+ * Version: 1.3.2-rc1
  * Requires at least: 7.1
  * Requires PHP: 8.3
  * Update URI: https://github.com/thiendzung/mg-saoluu
@@ -10,7 +10,7 @@
  * License: GPL2
  */
 if (!defined('ABSPATH')) { exit; }
-if (!defined('MG_SAOLUU_VERSION')) define('MG_SAOLUU_VERSION', '1.3.1');
+if (!defined('MG_SAOLUU_VERSION')) define('MG_SAOLUU_VERSION', '1.3.2-rc1');
 if (!defined('MG_SAOLUU_DATA_VERSION')) define('MG_SAOLUU_DATA_VERSION', '6'); // No destructive migration from RC1.
 if (!defined('MG_SAOLUU_MAX_SQL_UPLOAD')) define('MG_SAOLUU_MAX_SQL_UPLOAD', 300 * 1024 * 1024);
 if (!defined('MG_SAOLUU_MAX_ZIP_UNCOMPRESSED')) define('MG_SAOLUU_MAX_ZIP_UNCOMPRESSED', 8 * 1024 * 1024 * 1024);
@@ -41,3 +41,6 @@ if (function_exists('wp_cache_add_non_persistent_groups')) {
 // Old options remain untouched; old POST actions are explicitly blocked in admin/actions.php.
 require_once MG_SAOLUU_DIR . 'admin/actions.php';
 require_once MG_SAOLUU_DIR . 'admin/render.php';
+if (defined('WP_CLI') && WP_CLI) {
+    require_once MG_SAOLUU_DIR . 'includes/cli.php';
+}
