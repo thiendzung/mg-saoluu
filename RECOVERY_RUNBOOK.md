@@ -1,67 +1,43 @@
-# MG Sao Lưu v1.2.1 — Recovery Kit & Disaster Restore
+# MG Sao Lưu — Recovery Runbook (stable v1.3.1 + P2A candidate)
 
-## Bước 0 — Trước khi có sự cố
+## 1. Before a release
 
-Lưu ở **hai địa điểm độc lập**, không nằm cùng `public_html` hoặc tài khoản có thể bị xóa cùng hosting:
+- Record exact git commit SHA(s), plugin/theme versions, WordPress/PHP/MySQL versions, DB prefix, storage engine inventory, and a versioned release manifest.
+- Maintain a **full DB + files recovery set** off hosting and a separate copy of secret/configuration information in a secure password manager. Backup ZIPs intentionally omit `wp-config.php` and some host configuration.
+- Confirm the recovery set was independently restored on an isolated WordPress clone. Record verified archive SHA-256, SQL/payload hashes, schema inventory, sample records, media and elapsed restore time. Hash-verified is **not** restore-tested.
+- Use isolated clone DB/user, blocked real email/payment/webhooks and indexing. Never use `motgu.test` as a disposable clone.
 
-- Ít nhất một `.mgbackup` (DB + files) mới nhất, một bản độc lập trước thay đổi lớn, fingerprint SHA-256 của file, manifest và thời điểm sao lưu.
-- **Recovery Key** hoặc mật khẩu riêng của bản mã hóa, lưu trong password manager; nếu mất key không thể mở `.mgbackup`.
-- `wp-config.php` và site salts/secret, thông tin DB host/name/user (credential cất riêng, không plaintext trong Git), cấu hình `.htaccess`/rewrite/PHP/cron/cPanel, plugin/license thật; WordPress domain/permalink/SSL settings.
-- Source Git SHA của theme/plugin đang dùng, môi trường PHP + MySQL/MariaDB và danh sách bảng; các khóa tích hợp thanh toán phải được kiểm soát riêng.
-- Bằng chứng khôi phục trên WordPress clone với DB riêng (ngày, scope, ảnh hưởng, kiểm chứng). `checksum ok` không phải `restore tested`.
-
-## Khi backup cần kiểm tra ngoài WordPress
-
-Trên Mac/terminal có PHP CLI **với ZipArchive và OpenSSL**, tải bản backup về thư mục riêng mode 0700; không dùng đường dẫn trong webroot.
+## 2. P2A DB checkpoint (candidate; not deployed)
 
 ```sh
-php tools/recovery-verify.php /path/private/full-backup.mgbackup
+wp mg-saoluu backup --components=database --reason=pre-deploy --ref=<FULL_GIT_SHA> --format=json
+wp mg-saoluu list --format=json
+wp mg-saoluu verify --id=<BACKUP_ID> --format=json
 ```
 
-Nhập Recovery Key qua terminal/stdin khi được hỏi. Nếu cần giữ ZIP đã giải mã để dùng công cụ database độc lập:
+- Backups use all tables in the selected WordPress database, including custom-prefix tables. Require only InnoDB for transactional consistency and no concurrent DDL/migrations.
+- Backup output must include `ok=true`, opaque `backup_id`, `archive_sha256`, `sql_sha256`, `git_ref`, `created_at`, and `protected=true`. All checked against the archive and metadata before the gate is PASS.
+- `verify` is read-only and never proves restore. Preserve protected archive, signing salts/key and site configuration. No automated DB restore is implemented.
+- Checkpoint protection prevents normal prune; explicit retention/cleanup belongs to the future P5 controller, not this plugin command.
+- A DB-only checkpoint cannot restore uploads, themes, plugins or host configuration. Full backup, offsite copy and restore drill remain independent gates.
 
-```sh
-php tools/recovery-verify.php /path/private/full-backup.mgbackup --keep=/path/private/recovered.zip
-```
+## 3. Independent recovery drill
 
-Công cụ sẽ kiểm tra từng checksum SHA-256 và xác thực AES-GCM khi giải mã; **không** tự xác minh chữ ký nguồn được ký bằng WordPress salts/custom signing key. Nếu có bất cứ lỗi xác minh nào, STOP, không import SQL.
+1. Provision a disposable clone with new DB, credentials, domain, and correct table prefix. Block outbound provider calls, live payments, indexing, scheduled sends and webhook effects.
+2. Verify source artifact SHA-256, ZIP structure, payload hashes and provenance. Do not assume a foreign signing secret can validate the current site's manifest HMAC.
+3. Import the vetted SQL **only into clone DB** using authorized native mysql tool. If the import fails, dispose the clone and rebuild; never import over live data.
+4. Confirm table set, representative rows, Woo HPOS/MG-OS objects if present, prefix, URL migration dry-run, media, admin login, and theme/plugin behavior. Only record `RESTORE_DRILL_PASS` with evidence.
+5. Dispose the clone when finished; retain the backup and sanitized QA record.
 
-## Khôi phục thử lên Herd + DBngin (khuyến nghị trước mọi restore thật)
+## 4. Production incident
 
-1. Chuẩn bị WordPress core cùng phiên bản tương thích trên **host/tên miền thử riêng**; đặt `wp-config.php` clone riêng, DBngin **DB và user riêng**, không có quyền truy cập DB production hoặc `motgu.test`. Chặn email/checkout/webhook và indexing từ đầu.
-2. Kiểm chứng SHA-256 của artifact, giải mã ZIP ngoài webroot và đọc manifest. Đối chiếu `db_table_prefix` và trạng thái source. Khi khác prefix, không nhập cưỡng bức vào DB có dữ liệu. Không tự động chỉnh prefix trong SQL thô.
-3. Khôi phục database + media + theme/plugin theo backup set. Dùng công cụ CLI native phù hợp phiên bản; `wp db import` sử dụng credentials của **clone**. Nếu thao tác nhập lỗi, bỏ clone và dựng mới từ snapshot sạch; không import chồng như một lần thử thứ hai.
-4. Khi domain thay đổi, dùng WP-CLI `search-replace --dry-run` trước, sau đó thao tác chỉ trên clone với `--skip-columns=guid`. Kiểm tra URL serialized và `home/siteurl` bằng source chính xác. Không thực hiện trên DB production.
-5. Kiểm tra URL Home, Single Post, ảnh, theme CSS, WP Admin login, media, SEO data, Woo Product và HPOS Orders, các bảng MG-OS đã có, UTF-8, và quyền file/cron. Chỉ khi các bảng đúng + file đọc được mới được ghi nhận `RESTORE_DRILL_PASS`.
-6. Lưu bằng chứng không có credential/PII, dispose clone theo chính sách riêng. Không xóa backup gốc hoặc các bản JetBackup của AZDIGI.
+- For a code regression, first roll back exactly the verified plugin/theme release. Avoid restoring DB merely to fix code.
+- If any new orders/payments/inquiries have arrived, **never auto-restore an old DB**. Founder must approve reconciliation/export/replay/data-loss decision.
+- Full Restore Production is a separate permissioned incident workflow; **a successful P2A command does not unlock it**.
+- If admin/plugin unavailable, recover using the independent full backup, recorded infrastructure config and native tools; protect current data before overwrites.
 
-## Khi production lỗi thật
+## 5. Stop conditions
 
-- **Lỗi theme/plugin:** rollback release code đúng Git SHA trước; không full-restore DB làm mất bài viết/đơn hàng mới.
-- **Lỗi một bài/file media:** ưu tiên WordPress revision hoặc restore chọn lọc từ snapshot; tránh ghi đè toàn DB.
-- **Lỗi DB:** khóa ghi/checkout khi phù hợp, chụp snapshot trạng thái lỗi nếu còn đọc được, chọn thời điểm backup rõ ràng và ước lượng dữ liệu sau thời điểm backup sẽ mất. Dùng restore runbook được Founder duyệt.
-- **Mất hosting:** mở cPanel/hosting mới hoặc nhờ AZDIGI hỗ trợ full account restore. Dựng WordPress + DB/config từ Recovery Kit, giải mã backup và phục hồi bằng công cụ độc lập. Không giả định màn MG Sao Lưu còn truy cập được. Kiểm tra kết quả rồi mới mở traffic, email và checkout.
+Invalid site identity, unknown DB target, non-InnoDB table, schema drift, missing binary, symlink/path traversal, altered ZIP/hash, stale metadata, disk shortfall, lock contention, outbound live provider exposure, or absent clone recovery evidence => **STOP / NO-GO**.
 
-## Giới hạn hiện tại
-
-v1.2.1 chưa có wizard tải ngược Google Drive để restore tự động, dữ liệu DB + files không phải snapshot filesystem nguyên tử, và upload Drive chưa mặc định chứng minh được roundtrip tải lại. Restore production chỉ dùng backup được tạo từ chính host production, manifest hợp lệ, Local đã ghép nối ký mở khóa 10 phút và quản trị viên xác nhận lại. Với sự cố thật, vẫn phải xác định phạm vi mất dữ liệu và phê duyệt trước khi ghi đè.
-
-## Test Host → Local + debug
-
-1. Trên site nguồn được phép backup, tạo bản mã hóa `local_copy` tại tab **Sao lưu**. Xác minh và tải gói về Mac; lưu Recovery Key nguồn trong password manager. Không dùng dữ liệu khách thật trong môi trường thử chưa được cô lập.
-2. Chuẩn bị **hai clone độc lập** với database và user khác nhau; không ghi đè `motgu.test` hoặc `motgu.com`. Trên clone đích tắt outbound email, payment, webhook, indexing, cron thật trước khi import.
-3. Trên clone đích, chọn **Khôi phục → Nhập .mgbackup/.zip**, điền Recovery Key nguồn, xác nhận, chọn database + files, bật chuyển URL. Prefix DB phải khớp.
-4. Kiểm tra GUID, Post/Artwork, WP media, WooCommerce HPOS, tables riêng, plugins/themes và URL. Khi lỗi rollback, clone chưa được coi là an toàn nếu chưa xác minh dữ liệu thực tế.
-5. Xem **Cài đặt → Hệ thống → Debug backup/restore**, tải JSONL; chỉ chứa checkpoint và trường dữ liệu được phép. File lưu ngoài webroot, tối đa ~2MB trước xoay vòng; Local/Staging mặc định bật, Production mặc định tắt.
-6. Nếu cần PHP error log trên **clone** riêng, đặt đoạn sau trong `wp-config.php` trước dòng stop editing, thay đường dẫn ngoài webroot cho phù hợp và tránh định nghĩa hằng số hai lần:
-
-```php
-define('WP_DEBUG', true);
-define('WP_DEBUG_LOG', '/absolute/private/path/wp-errors.log');
-define('WP_DEBUG_DISPLAY', false);
-@ini_set('display_errors', 0);
-```
-
-7. Không gửi raw PHP log hoặc ZIP backup qua chat vì có thể chứa dữ liệu riêng tư. Sau thử nghiệm, tắt logging PHP và bỏ clone theo runbook.
-
-**Stable production restore không phải migration.** Chỉ khôi phục backup cùng production host sau các chốt bảo mật; nếu WordPress Admin không truy cập được, dùng Recovery Kit và quy trình độc lập ở trên.
+Historical 1.2.x/1.3.0 Local-to-Host transfer, signing challenge and Pack Restore experiments are **not** instructions for the active v1.3.1 product.
