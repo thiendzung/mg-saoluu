@@ -4,10 +4,10 @@ Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
 Stable tag: 1.3.1
-Current release: 1.3.2-rc1 (candidate, not stable)
+Current release: 1.3.2-rc2 (candidate, not stable)
 License: GPLv2 or later
 
-Candidate v1.3.2-rc1: stable Full Backup/Restore plus WP-CLI-only pre-deploy database checkpoint; not released.
+Candidate v1.3.2-rc2: P2A CLI checkpoint plus Local-only one-time Recovery Key disclosure; not released.
 
 == Description ==
 
@@ -28,6 +28,10 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 5. Keep hosting JetBackup + offsite independently. Production only after separate acceptance.
 
 == Changelog ==
+
+= 1.3.2-rc2 (candidate) =
+* Add Local-only existing Recovery Key one-time display inside simple Backup tab with admin re-auth and no-store response.
+* Block historical show/import actions; encryption/offsite and Production remain separately gated.
 
 = 1.3.2-rc1 (candidate) =
 * Adds WP-CLI-only backup/list/verify for protected DB checkpoints; no CLI restore.

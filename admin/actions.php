@@ -9,6 +9,7 @@ function mg_saoluu_handle_actions(&$message, &$status) {
     // v1.3.1 active product surface: Full Site Backup + Full Site Restore only.
     if (in_array($action, [
         'pack_backup','pack_restore','pack_restore_upload','verify_restore_upload','restore_sql_upload',
+        'security_show_recovery_key','security_import_recovery_key',
         'security_generate_device','security_pair_code','security_import_pair','security_revoke_signer',
         'security_restore_challenge','security_sign_restore_challenge','security_apply_restore_approval','security_lock_restore',
         'setup_environment','setup_security','save_security','save_settings'

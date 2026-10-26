@@ -134,6 +134,23 @@ function mg_saoluu_render_simple_page() {
                 <p class="mgsl-small">Tự bỏ qua cache, backup cũ, wp-config.php và file cấu hình server. Backup được lưu ngoài webroot.</p>
             </section>
 
+            <?php if (mg_saoluu_environment() === 'local'): ?>
+            <section class="mgsl-card">
+                <h2 class="mgsl-title">Recovery Key (chỉ Local)</h2>
+                <p>Xem khóa hiện có để lưu vào password manager truy cập độc lập với máy Mac. Không gửi khóa qua email, chat hoặc GitHub.</p>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" autocomplete="off">
+                    <?php wp_nonce_field('mg_saoluu_recovery_key_once', 'mgsl_recovery_nonce'); ?>
+                    <input type="hidden" name="action" value="mg_saoluu_recovery_key_once">
+                    <div class="mgsl-field">
+                        <label for="mgsl-recovery-admin-password">Mật khẩu tài khoản quản trị viên hiện tại</label>
+                        <input id="mgsl-recovery-admin-password" type="password" name="admin_password" autocomplete="current-password" required>
+                    </div>
+                    <button class="button" type="submit">Hiển thị Recovery Key hiện có</button>
+                </form>
+                <p class="mgsl-small">Không tạo hoặc đổi khóa. Việc hiển thị không đồng nghĩa đã lưu khóa an toàn.</p>
+            </section>
+            <?php endif; ?>
+
         <?php elseif ($active === 'restore'): ?>
             <section class="mgsl-card">
                 <h2 class="mgsl-title">Khôi phục toàn website</h2>

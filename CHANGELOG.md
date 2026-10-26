@@ -1,3 +1,11 @@
+## 1.3.2-rc2 — Local Recovery Key disclosure (P2B-R1, candidate)
+
+- Keep the active three-tab Backup/Restore/Saved Backups interface.
+- Add a Local-only Recovery Key reveal section within the Backup tab; explicit admin POST, dedicated nonce, current-password reauthentication and rate limiting.
+- Output the existing key once with no-store/referrer/CSP protections; never auto-create, rotate, transient-cache, log or store the plaintext key in disclosure flow.
+- Block dormant legacy Recovery Key show/import POST routes; keep unrelated backup/restore behavior unchanged.
+- R1 does not enable encrypted Full Backup, Google Drive or Production restore. Off-device key/salts recovery must be verified separately.
+
 ## 1.3.1 — Simple Full Backup & Restore (2026-10-25)
 
 - Collapse the active product surface to three tabs: Backup, Restore and Saved Backups.

@@ -31,8 +31,9 @@ php tests/schedule_health.php
 php tests/packs_contract.php
 php tests/pack_worker_contract.php
 php tests/admin_ui_contract.php
+php tests/p2b_recovery_key_contract.php
 
-ZIP="$TMP/mg-saoluu-v1.3.2-rc1.zip"
+ZIP="$TMP/mg-saoluu-v1.3.2-rc2.zip"
 echo "=== PACKAGE: deterministic ZIP + CRC/payload ==="
 python3 scripts/package_release.py --out "$ZIP"
 unzip -t "$ZIP"
@@ -49,6 +50,7 @@ php tests/schedule_health.php
 php tests/packs_contract.php
 php tests/pack_worker_contract.php
 php tests/admin_ui_contract.php
+php tests/p2b_recovery_key_contract.php
 
 echo "=== FINAL ZIP SHA-256 ==="
 python3 - "$ZIP" <<'PY'
