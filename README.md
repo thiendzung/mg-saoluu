@@ -25,6 +25,7 @@ wp mg-saoluu verify --id=<BACKUP_ID> --format=json
 - The active admin UI keeps exactly three tabs. The **Sao lưu** tab adds a small **Recovery Key** area which POSTs to a dedicated authenticated admin endpoint.
 - Requires HTTPS, WordPress nonce, administrator capability and current password (bounded rate limits); only the existing managed or configured key is displayed on a **no-store/no-referrer** response. It is not saved to a transient or created/rotated by this action.
 - The old hidden `security_show_recovery_key` / `security_import_recovery_key` handlers are explicitly blocked; no legacy Settings tab is reactivated.
+- Activation and admin-init version upgrades preserve existing key state and never mint a missing Recovery Key. Default-password encryption with no existing key fails closed; explicit provisioning is separately gated under R2.
 - A displayed key is **not evidence of off-device escrow**. R2 encrypted-backup/offsite implementation and R3 recovery kit require separate acceptance.
 - R10 Full Backup remains plaintext and offsite unverified. Production NO-GO.
 

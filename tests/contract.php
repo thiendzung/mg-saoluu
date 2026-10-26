@@ -679,6 +679,18 @@ test('blocked POSTs leave transients unchanged', $GLOBALS['test_transients'] ===
 test('blocked POSTs leave backup files unchanged', scandir($external) === $blocked_files);
 test('blocked POSTs cannot mint managed key', !isset($GLOBALS['test_options']['mg_saoluu_managed_encryption_key']));
 $GLOBALS['test_options'] = $previous_options;
+// Neither an automatic/scheduled encrypted backup nor a password check
+// may generate a new Recovery Key implicitly when none was saved.
+$prior_encryption_options = $GLOBALS['test_options'];
+unset($GLOBALS['test_options']['mg_saoluu_managed_encryption_key']);
+$missing_key_options = $GLOBALS['test_options'];
+test('default encryption fails closed without an existing key',
+    mg_saoluu_encryption_password('') === ''
+    && $GLOBALS['test_options'] === $missing_key_options);
+test('explicit encryption password remains available without minting a managed key',
+    mg_saoluu_encryption_password('explicit-test-password-strong-123') === 'explicit-test-password-strong-123'
+    && $GLOBALS['test_options'] === $missing_key_options);
+$GLOBALS['test_options'] = $prior_encryption_options;
 // v1.3.2-rc2 has one environment-neutral restore flow.
 $restore_source = file_get_contents(MG_SAOLUU_DIR . 'includes/restore.php');
 test('v1.3.2-rc2 restore forces Full Site plus automatic URL rewrite',

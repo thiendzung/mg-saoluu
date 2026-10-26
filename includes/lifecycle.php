@@ -18,7 +18,8 @@ function mg_saoluu_activate() {
     add_option('mg_saoluu_encrypt_default', '1', '', false);
     add_option('mg_saoluu_drive_auto_upload', '0', '', false);
     update_option('mg_saoluu_data_version', MG_SAOLUU_DATA_VERSION, false);
-    if (function_exists('mg_saoluu_managed_encryption_key')) mg_saoluu_managed_encryption_key(true);
+    // Never mint/rotate a Recovery Key during activation or an admin-init upgrade.
+    // Missing keys require separate explicit provisioning after off-device escrow.
     update_option('mg_saoluu_setup_complete', '1', false);
     mg_saoluu_reschedule_cron();
 }
@@ -45,7 +46,8 @@ function mg_saoluu_maybe_upgrade() {
     update_option('mg_saoluu_data_version', MG_SAOLUU_DATA_VERSION, false);
     add_option('mg_saoluu_encrypt_default', '1', '', false);
     add_option('mg_saoluu_drive_auto_upload', '0', '', false);
-    if (function_exists('mg_saoluu_managed_encryption_key')) mg_saoluu_managed_encryption_key(true);
+    // Never mint/rotate a Recovery Key during activation or an admin-init upgrade.
+    // Missing keys require separate explicit provisioning after off-device escrow.
 }
 
 

@@ -35,6 +35,16 @@ ui_check('new install skips environment/security wizard',
     str_contains($lifecycle, "add_option('mg_saoluu_setup_complete', '1'")
     && !str_contains($lifecycle, "set_transient('mg_saoluu_activation_redirect', 1, 60)"));
 
+$crypto = src($plugin, 'includes/crypto.php');
+ui_check('activation and version upgrade never create missing Recovery Keys',
+    !str_contains($lifecycle, 'mg_saoluu_managed_encryption_key(true)')
+    && str_contains($lifecycle, 'function mg_saoluu_activate()')
+    && str_contains($lifecycle, 'function mg_saoluu_maybe_upgrade()'));
+
+ui_check('default encryption password requires an existing key',
+    str_contains($crypto, 'return mg_saoluu_managed_encryption_key(false);')
+    && !str_contains($crypto, 'return mg_saoluu_managed_encryption_key(true);'));
+
 ui_check('active UI has exactly the simple three-tab product surface',
     str_contains($render, "['backup' => 'Sao lưu', 'restore' => 'Khôi phục', 'backups' => 'Bản đã lưu']")
     && str_contains($render, 'mg_saoluu_render_simple_page();')

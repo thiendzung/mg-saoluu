@@ -43,7 +43,7 @@ Invalid site identity, unknown DB target, non-InnoDB table, schema drift, missin
 ## P2B-R1 Recovery Key retrieval
 
 - On candidate v1.3.2-rc2, use **Sao lưu → Recovery Key** after entering the current admin password over HTTPS. The display is one-request/no-store only; never copy the key to chats, tickets, browser logs or Git.
-- Keep the existing Recovery Key and original WordPress salts in independently accessible secure storage; a display-only event is not proof of off-device recovery. The plugin does not mint a new key during this view.
+- Keep the existing Recovery Key and original WordPress salts in independently accessible secure storage; a display-only event is not proof of off-device recovery. The plugin does not mint a new key during this view, activation, version upgrade or default-password encryption. Missing keys fail closed until an explicitly approved provisioning flow.
 - Plaintext R10 backup stays protected, unchanged and not uploaded. Encrypted backup/offsite and host-loss restoration are later separately authorized gates.
 
 Historical 1.2.x/1.3.0 Local-to-Host transfer, signing challenge and Pack Restore experiments are **not** instructions for the current simple three-tab product.
