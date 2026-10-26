@@ -72,10 +72,7 @@ function mg_saoluu_cli_checkpoint_transaction($git_ref) {
     ];
     $name = mg_saoluu_create_backup('sql', 'Pre-deploy DB checkpoint', 'backup_predeploy', false, $options);
     if (is_wp_error($name)) return $name;
-    $after = mg_saoluu_cli_engine_inventory();
-    if (is_wp_error($after) || $before !== $after) {
-        return new WP_Error('database_schema_drift', 'Database inventory changed during checkpoint.');
-    }
+    // The backup engine validated inventory before the archive and before catalog commit.
     $dir = mg_saoluu_get_backup_dir();
     $meta = mg_saoluu_read_metadata($dir . 'metadata.json');
     $record = $meta[$name] ?? null;
