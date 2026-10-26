@@ -3,6 +3,7 @@
 - Keep the existing three-tab UI; add a scoped Recovery Key view under Backup, authenticated with HTTPS, WordPress nonce, admin capability and password/rate limits.
 - Read only the existing Recovery Key in an explicit POST-only no-store response; no key generation, rotation, plaintext transient or old Settings UI.
 - Block old Recovery Key view/import POST actions and add synthetic security/negative-control contract tests.
+- All historical, hidden and unknown `mg_action` POST values are now denied at the entrypoint: only `backup`, `restore_saved`, and `restore_zip_upload` remain allowlisted. Non-scalar payloads fail closed.
 - No encrypted backup/offsite changes, no schema migration, no Production deployment authorization.
 
 ## 1.3.1 — Simple Full Backup & Restore (2026-10-25)

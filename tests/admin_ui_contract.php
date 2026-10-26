@@ -40,6 +40,15 @@ ui_check('active UI has exactly the simple three-tab product surface',
     && str_contains($render, 'mg_saoluu_render_simple_page();')
     && str_contains($render, 'Full Backup → Full Restore'));
 
+ui_check('three-tab POST dispatch denies all hidden/unknown actions before handlers',
+    str_contains($actions, "['backup', 'restore_saved', 'restore_zip_upload']")
+    && ($gate = strpos($actions, 'if (!mg_saoluu_simple_post_action_allowed($action))')) !== false
+    && ($legacy = strpos($actions, "if (\$action === 'setup_environment')")) !== false
+    && $gate < $legacy
+    && ($debug = strpos($actions, "mg_saoluu_debug_log('action_received'")) !== false
+    && $gate < $debug
+    && str_contains($actions, 'is_string($submitted_action)'));
+
 ui_check('simple backup action always creates safe_full without Pack mode',
     str_contains($actions, "mg_saoluu_create_backup('safe_full'")
     && str_contains($actions, "'encrypt' => false")

@@ -5,10 +5,10 @@
   "generated_at": "2026-10-26T04:05:55.860Z",
   "files": {
     ".htaccess": "8a140e242a320239d8217be279f4ee83a7157f45c3b9df5f121e868997af81ef",
-    "CHANGELOG.md": "78b51ecea34d7e24b7c99d24aeca37d69518d0c3640cbce0099b058f26a2e49c",
+    "CHANGELOG.md": "75cb9a167777f6c8fff1ac7a785044d5555aea397af5a98a4600fe2c94f1cef7",
     "README.md": "da22b165110b2ee885f3276de581ff07f830a90a94f1cb1c4551e88c1953e6ee",
     "RECOVERY_RUNBOOK.md": "9765174b7e1711b7a731f56e97b2e9d0a45b48031a973dc9068e0bf9730d5aaa",
-    "admin/actions.php": "34444be6b2883f25ec38966539b1c7f51d1a8e17c8cc871f67e051939b4b9ec8",
+    "admin/actions.php": "a299fa780174c1732021ce341c45e94dd3ec99383c6079b102e1b972f5de79db",
     "admin/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "admin/render.php": "9e7f9bedebee24064a943996dc3471866ad860fb708a235b81705f5a45ca350f",
     "assets/css/admin.css": "e1a84ef1dff6d5db539009965a35239515b065ef69998a90e034aa799f0f4fbb",

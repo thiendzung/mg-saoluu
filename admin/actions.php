@@ -1,12 +1,27 @@
 <?php
 if (!defined('ABSPATH')) { exit; }
+/**
+ * Deny-by-default for the active three-tab product. The Recovery Key reveal
+ * uses its separately authenticated admin-post endpoint, not mg_action.
+ * Legacy POST handlers below are intentionally unreachable.
+ */
+function mg_saoluu_simple_post_action_allowed($action) {
+    return is_string($action) && in_array($action, ['backup', 'restore_saved', 'restore_zip_upload'], true);
+}
+
 function mg_saoluu_handle_actions(&$message, &$status) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_POST['mg_action'])) return;
     if (!current_user_can('manage_options')) wp_die('Bạn không có quyền thực hiện.');
     check_admin_referer('mg_saoluu_secure', 'mg_nonce');
-    $action = sanitize_key(wp_unslash($_POST['mg_action']));
+    $submitted_action = wp_unslash($_POST['mg_action']);
+    $action = is_string($submitted_action) ? sanitize_key($submitted_action) : '';
+    if (!mg_saoluu_simple_post_action_allowed($action)) {
+        $status = 'error';
+        $message = 'Tác vụ ngoài giao diện ba tab đã tạm khóa.';
+        return;
+    }
 
-    // v1.3.1 active product surface: Full Site Backup + Full Site Restore only.
+    // Defense in depth: legacy handlers below cannot be reached.
     if (in_array($action, [
         'pack_backup','pack_restore','pack_restore_upload','verify_restore_upload','restore_sql_upload',
         'security_generate_device','security_pair_code','security_import_pair','security_revoke_signer',
