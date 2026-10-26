@@ -24,6 +24,7 @@ find . -type f -name '*.php' ! -path './.git/*' -print0 | xargs -0 -n 1 php -l
 
 echo "=== SOURCE: integrity, contracts and unsafe config ==="
 php tests/integrity_manifest.php
+php tests/p2a_cli_contract.php
 php tests/contract.php
 php tests/contract.php --unsafe-config
 php tests/schedule_health.php
