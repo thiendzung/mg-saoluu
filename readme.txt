@@ -4,10 +4,10 @@ Tags: backup, restore, security, disaster-recovery
 Requires at least: 7.1
 Requires PHP: 8.3
 Stable tag: 1.3.1
-Current release: 1.3.1
+Current release: 1.3.2-rc1 (candidate, not stable)
 License: GPLv2 or later
 
-MG Sao Luu v1.3.1: Full Backup + Full Restore, tu nhan domain dich va tu dong doi URL khi khoi phuc.
+Candidate v1.3.2-rc1: stable Full Backup/Restore plus WP-CLI-only pre-deploy database checkpoint; not released.
 
 == Description ==
 
@@ -28,6 +28,10 @@ Backup verify or cloud upload is NOT proof of a successful disaster restore.
 5. Keep hosting JetBackup + offsite independently. Production only after separate acceptance.
 
 == Changelog ==
+
+= 1.3.2-rc1 (candidate) =
+* Adds WP-CLI-only backup/list/verify for protected DB checkpoints; no CLI restore.
+* Requires isolated clone QA before installing into a WordPress runtime.
 
 = 1.3.1 =
 * Active UI chi con Sao luu, Khoi phuc, Ban da luu.
