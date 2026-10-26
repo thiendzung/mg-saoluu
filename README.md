@@ -1,4 +1,4 @@
-# MG Sao Lưu — v1.3.1 stable / P2A checkpoint candidate
+# MG Sao Lưu — v1.3.1 stable / v1.3.2-rc1 P2A checkpoint candidate
 
 MG Sao Lưu is a WordPress backup and restore plugin. The stable v1.3.1 active admin surface offers **Full Site Backup** and **Full Site Restore**. Backups use native mysqldump, ZIP payload SHA-256, a signed manifest, and storage outside webroot. Recovery must be proven on an independent clone; archive verification is **not** restore proof.
 
