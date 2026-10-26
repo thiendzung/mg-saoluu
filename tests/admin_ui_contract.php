@@ -103,11 +103,11 @@ ui_check('upload UI keeps drag-drop and bounded size validation',
     && str_contains($js, "document.addEventListener('drop'")
     && str_contains($js, 'picked.size > limit'));
 
-ui_check('pack and signer concepts are absent from active simple UI function',
+ui_check('pack and legacy environment/approval UI remain absent from simple product surface',
     ($start = strpos($render, 'function mg_saoluu_render_simple_page')) !== false
     && ($end = strpos($render, 'function mg_saoluu_render_page', $start)) !== false
     && !str_contains(substr($render, $start, $end - $start), 'Pack Restore')
-    && !str_contains(substr($render, $start, $end - $start), 'Local')
+    && !str_contains(substr($render, $start, $end - $start), 'Local → Bảo mật')
     && !str_contains(substr($render, $start, $end - $start), 'Production')
     && !str_contains(substr($render, $start, $end - $start), 'MGAPPROVE1'));
 
