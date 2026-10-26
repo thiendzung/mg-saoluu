@@ -42,6 +42,7 @@ echo "=== EXTRACTED ZIP: integrity, contracts and unsafe config ==="
 export MGSL_TEST_PLUGIN_DIR="$TMP/extracted/mg-saoluu"
 test -f "$MGSL_TEST_PLUGIN_DIR/mg-saoluu.php"
 php tests/integrity_manifest.php
+php tests/p2a_cli_contract.php
 php tests/contract.php
 php tests/contract.php --unsafe-config
 php tests/schedule_health.php
