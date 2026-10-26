@@ -32,7 +32,7 @@ php tests/packs_contract.php
 php tests/pack_worker_contract.php
 php tests/admin_ui_contract.php
 
-ZIP="$TMP/mg-saoluu-v1.3.1.zip"
+ZIP="$TMP/mg-saoluu-v1.3.2-rc1.zip"
 echo "=== PACKAGE: deterministic ZIP + CRC/payload ==="
 python3 scripts/package_release.py --out "$ZIP"
 unzip -t "$ZIP"
