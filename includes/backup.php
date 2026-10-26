@@ -193,6 +193,13 @@ function mg_saoluu_create_backup($type, $note = '', $prefix = 'backup', $apply_r
     $final_sha = @hash_file('sha256', $final_path);
     if (!$final_sha) { @unlink($final_path); return new WP_Error('backup_hash_failed', 'Không tính được fingerprint của backup.'); }
 
+    if ($options['purpose'] === 'pre-deploy') {
+        $final_inventory = mg_saoluu_cli_engine_inventory();
+        if (is_wp_error($final_inventory) || $final_inventory !== $options['table_inventory']) {
+            @unlink($final_path);
+            return new WP_Error('database_schema_drift', 'Schema database thay đổi trong lúc tạo checkpoint.');
+        }
+    }
     $metadata_file = $dir . 'metadata.json';
     $metadata = mg_saoluu_read_metadata($metadata_file);
     $metadata[$final_name] = [
