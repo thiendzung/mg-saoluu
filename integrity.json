@@ -2,7 +2,7 @@
   "format": "mg-saoluu-integrity",
   "version": 1,
   "plugin_version": "1.3.1",
-  "generated_at": "2026-10-26T04:02:35.990Z",
+  "generated_at": "2026-10-26T04:03:58.095Z",
   "files": {
     ".htaccess": "8a140e242a320239d8217be279f4ee83a7157f45c3b9df5f121e868997af81ef",
     "CHANGELOG.md": "8236d95b14455626b4318a2f8211173bc91da8a870ac6768e5901642dee23119",
@@ -14,7 +14,7 @@
     "assets/css/admin.css": "e1a84ef1dff6d5db539009965a35239515b065ef69998a90e034aa799f0f4fbb",
     "assets/index.php": "e230319b1f0386cd8db05026aca2cd3f5b1c6c2ccedffa60a904e0840762b006",
     "assets/js/admin.js": "53bb860443d289205618dd5c55113dbe9b1ce4dd1da31444ca6c6f2b410fd647",
-    "includes/backup.php": "c34280a07782415e3370b627d52e7518a4d821db19e4b408e2a4777114e1bab0",
+    "includes/backup.php": "7c5363cde07b13875fe5577cdfb8a7388bfa4e8d4707a4b1b31aefb1a2c7ceb9",
     "includes/catalog.php": "72dcb3c190e1638adf6df7a35b75df10cd8255f2f0bee7d9076fff58da4b3ff5",
     "includes/core.php": "1e4b8767c5b97caf7f2abecc671104d6fb04fd1c6ae9f2707526580da924e03c",
     "includes/crypto.php": "c4b677d476b596fbeab46fd9df9b2f32dfc2f155d2ede1fb3104c860aa9ff17c",
@@ -34,6 +34,6 @@
     "includes/schedule-health.php": "c5f368bf3e5c71a7506d15ebb6f0c60d7dcf20582bb27b73b6399488588d3f7f",
     "includes/packs.php": "48b71641edb67d18c842ae0f1b06a950f2db5f7ced8e8834db23ef195cb13aa1",
     "bin/pack-restore-worker.php": "48fb0646807ea5447a050289d20ef223c18f204a172563a07bb70115b2e497c3",
-    "includes/cli.php": "7a54b69d8551b5cf90ff20cd9b5d6aba99d7b83ebbd849828afffb90571aa166"
+    "includes/cli.php": "3d3cf5b7b76e5b486447a3529b7adbeeb2403f8f9422b4f53cf350765397f203"
   }
 }
