@@ -1,5 +1,5 @@
 <?php
-/** v1.3.1 simple Backup/Restore static contracts; no WordPress bootstrap. */
+/** v1.3.2-rc1 simple Backup/Restore static contracts; no WordPress bootstrap. */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 
 $plugin = rtrim((string)(getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/');
@@ -26,9 +26,9 @@ $render = src($plugin, 'admin/render.php');
 $js = src($plugin, 'assets/js/admin.js');
 $css = src($plugin, 'assets/css/admin.css');
 
-ui_check('v1.3.1 version is explicit',
-    str_contains($main, "Version: 1.3.1")
-    && str_contains($main, "define('MG_SAOLUU_VERSION', '1.3.1')"));
+ui_check('v1.3.2-rc1 version is explicit',
+    str_contains($main, "Version: 1.3.2-rc1")
+    && str_contains($main, "define('MG_SAOLUU_VERSION', '1.3.2-rc1')"));
 
 ui_check('new install skips environment/security wizard',
     str_contains($lifecycle, "add_option('mg_saoluu_setup_complete', '1'")
