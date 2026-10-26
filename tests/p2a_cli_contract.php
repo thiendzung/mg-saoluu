@@ -18,7 +18,8 @@ class WP_CLI {
 }
 function is_wp_error($error) { return $error instanceof WP_Error; }
 function wp_json_encode($value, $options = 0) { return json_encode($value, $options); }
-require dirname(__DIR__) . '/includes/cli.php';
+$plugin_dir = rtrim((string) (getenv('MGSL_TEST_PLUGIN_DIR') ?: dirname(__DIR__)), '/');
+require $plugin_dir . '/includes/cli.php';
 $n = 0;
 function t($label, $pass) { global $n; $n++; if (!$pass) {fwrite(STDERR,"FAIL $label\n"); exit(1);} echo "PASS $label\n"; }
 t('register exact three commands', array_keys(WP_CLI::$commands) === ['mg-saoluu backup', 'mg-saoluu list', 'mg-saoluu verify']);
